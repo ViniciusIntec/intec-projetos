@@ -35,7 +35,7 @@ const TIPOS = {
 
 const USUARIOS_PADRAO = [
   { id:"vinicius", nome:"Vinicius", email:"intecestruturas4@gmail.com", senha:"1234",
-    perfil:"admin", cor:"#2563a8", iniciais:"VI", ativo:true,
+    perfil:"colaborador", cor:"#2563a8", iniciais:"VI", ativo:true,
     expediente:{ inicio:"08:00", fim:"18:00" },
     salario:0, especialidades:["PE","PR","LT","PF"] },
   { id:"leonardo", nome:"Leonardo", email:"intecestruturas2@gmail.com", senha:"1234",
@@ -147,10 +147,14 @@ const Btn=({children,onClick,variant="primary",small,style={},disabled})=>{
   const v={primary:{background:C.azulMedio,color:C.branco,border:"none"},secondary:{background:"transparent",color:C.azulMedio,border:`1.5px solid ${C.azulMedio}`},danger:{background:C.vermelho,color:C.branco,border:"none"},ghost:{background:"transparent",color:C.cinzaClaro,border:`1px solid ${C.cinzaCard}`},ciano:{background:C.ciano,color:C.azulEscuro,border:"none"},verde:{background:C.verde,color:C.branco,border:"none"}};
   return <button onClick={onClick} disabled={disabled} style={{...v[variant],borderRadius:8,padding:small?"5px 12px":"9px 20px",fontSize:small?12:14,fontWeight:600,cursor:disabled?"not-allowed":"pointer",opacity:disabled?0.5:1,transition:"all 0.15s",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6,...style}}>{children}</button>;
 };
-const Inp=({label,value,onChange,type="text",placeholder,required})=>(
+const Inp=({label,value,onChange,type="text",placeholder,required,readOnly,style={}})=>(
   <div style={{display:"flex",flexDirection:"column",gap:4}}>
     {label&&<label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>{label}{required&&<span style={{color:C.vermelho}}> *</span>}</label>}
-    <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:C.branco,width:"100%",boxSizing:"border-box"}}/>
+    <input type={type} value={value}
+      onChange={e=>{ if(!readOnly && onChange) onChange(e.target.value); }}
+      placeholder={placeholder}
+      readOnly={readOnly}
+      style={{border:`1.5px solid ${readOnly?C.cinzaCard:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:readOnly?C.cinzaClaro:C.cinzaEscuro,outline:"none",background:readOnly?"#f8fafc":C.branco,width:"100%",boxSizing:"border-box",cursor:readOnly?"not-allowed":"text",...style}}/>
   </div>
 );
 const Sel=({label,value,onChange,options,required})=>(
@@ -1689,9 +1693,9 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           <div>
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>📁 Identificação</h3>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <Inp label="Código *" value={form.codigo} onChange={v=>{ if(!form._doDrive) s("codigo",v); }} required style={{background:form._doDrive?"#f8fafc":undefined,cursor:form._doDrive?"not-allowed":"text"}}/>
+              <Inp label={`Código *${form._doDrive?" (não editável)":""}`} value={form.codigo} onChange={v=>s("codigo",v)} required readOnly={!!form._doDrive}/>
               <Sel label="Tipo" value={form.tipo} onChange={v=>s("tipo",v)} options={Object.entries(TIPOS).map(([k,v])=>({value:k,label:`${k} – ${v}`}))}/>
-              <div style={{gridColumn:"1/-1"}}><Inp label={`Cliente / Projeto *${form._doDrive?" (importado do Drive — não editável)":""}`} value={form.cliente} onChange={v=>{ if(!form._doDrive) s("cliente",v); }} required style={{background:form._doDrive?"#f8fafc":undefined,cursor:form._doDrive?"not-allowed":"text"}}/></div>
+              <div style={{gridColumn:"1/-1"}}><Inp label={`Cliente / Projeto *${form._doDrive?" (importado do Drive — não editável)":""}`} value={form.cliente} onChange={v=>s("cliente",v)} required readOnly={!!form._doDrive}/></div>
               <Sel label="Responsável" value={form.responsavel} onChange={v=>s("responsavel",v)}
                 options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
               <Sel label="Co-responsável" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
