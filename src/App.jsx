@@ -17,13 +17,15 @@ const C = {
 };
 
 const STATUS_CONFIG = {
-  "Em andamento":{ cor:C.azulClaro, bg:"#e8f4fd", icone:"▶" },
-  "CONCLUÍDO":   { cor:C.verde,     bg:"#f0fdf4", icone:"✓" },
-  "PAUSADO":     { cor:C.amarelo,   bg:"#fffbeb", icone:"⏸" },
-  "ATRASADO":    { cor:C.vermelho,  bg:"#fef2f2", icone:"⚠" },
-  "Novo/Definir":{ cor:C.cinzaClaro,bg:"#f8fafc", icone:"○" },
-  "Concluído":   { cor:C.verde,     bg:"#f0fdf4", icone:"✓" },
+  "Novo/Definir": { cor:C.cinzaClaro, bg:"#f8fafc", icone:"○" },
+  "Em andamento": { cor:C.azulClaro,  bg:"#e8f4fd", icone:"▶" },
+  "PAUSADO":      { cor:C.amarelo,    bg:"#fffbeb", icone:"⏸" },
+  "ATRASADO":     { cor:C.vermelho,   bg:"#fef2f2", icone:"⚠" },
+  "CONCLUÍDO":    { cor:C.verde,      bg:"#f0fdf4", icone:"✓" },
+  "CANCELADO":    { cor:"#6b7280",    bg:"#f3f4f6", icone:"✕" },
 };
+// Normaliza variações antigas
+const STATUS_ALIAS = { "Concluído":"CONCLUÍDO", "concluído":"CONCLUÍDO", "Cancelado":"CANCELADO" };
 
 const TIPOS = {
   PE:"Proj. Estrutural", PR:"Proj. Reforço", LT:"Laudo Técnico",
@@ -308,14 +310,24 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     <Btn variant="danger" onClick={()=>onFechar("encerrar")} style={{justifyContent:"center"}}>⏹ Parei de trabalhar</Btn>
   </>, "⏰ Verificação de Atividade", "Já faz 1 hora — você ainda está trabalhando?", C.amarelo, C.laranja);
 
-  if(tipo==="encerramento") return wrap(<>
-    <Inp label="Hora de saída" type="time" value={hf} onChange={setHf}/>
-    <Inp label="Observação do dia (opcional)" value={obs} onChange={setObs} placeholder="Como foi o dia?"/>
-    <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-      <Btn variant="ghost" onClick={onFechar}>Cancelar</Btn>
-      <Btn variant="verde" onClick={()=>onEncerrar(hf,obs)}>✔ Encerrar e Salvar</Btn>
-    </div>
-  </>, "🏁 Encerrar Expediente", "Registre o horário de saída para finalizar o dia", C.azulEscuro, C.azulMedio);
+  if(tipo==="encerramento") {
+    const horaMaxima = new Date().toTimeString().slice(0,5);
+    const horaValida = hf <= horaMaxima;
+    return wrap(<>
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Hora de saída <span style={{color:C.cinzaClaro,fontWeight:400}}>(máx: {horaMaxima})</span></label>
+        <input type="time" value={hf} max={horaMaxima}
+          onChange={e=>{ if(e.target.value<=horaMaxima) setHf(e.target.value); else setHf(horaMaxima); }}
+          style={{border:`1.5px solid ${horaValida?C.cinzaCard:C.vermelho}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:C.branco,width:"100%",boxSizing:"border-box"}}/>
+        {!horaValida&&<span style={{fontSize:11,color:C.vermelho}}>⚠ Hora não pode ser maior que {horaMaxima}</span>}
+      </div>
+      <Inp label="Observação do dia (opcional)" value={obs} onChange={setObs} placeholder="Como foi o dia?"/>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <Btn variant="ghost" onClick={onFechar}>Cancelar</Btn>
+        <Btn variant="verde" onClick={()=>onEncerrar(hf,obs)} disabled={!horaValida}>✔ Encerrar e Salvar</Btn>
+      </div>
+    </>, "🏁 Encerrar Expediente", "Registre o horário de saída para finalizar o dia", C.azulEscuro, C.azulMedio);
+  }
 
   return null;
 }
@@ -1424,6 +1436,9 @@ function BancoHoras({registros,usuarios,projetos,usuarioAtual,onAbrirEncerrament
                   <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{aberta?<span style={{color:C.verde,fontWeight:700}}>Em aberto</span>:r.horaFim}</td>
                   <td style={{padding:"9px 14px",fontWeight:700,color:aberta?C.verde:C.azulEscuro}}>{aberta?"...":fmtDuracao(r.duracaoMin)}</td>
                   <td style={{padding:"9px 14px",color:C.cinzaClaro,fontSize:11}}>{r.obs||"—"}</td>
+                  {["admin","gestor"].includes(usuarioAtual.perfil)&&<td style={{padding:"9px 14px"}}>
+                    <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Excluir este registro?"))setRegistros(x=>x.filter(x2=>x2.id!==r.id));}} variant="danger" small>🗑</Btn>
+                  </td>}
                 </tr>);
               })}
             </tbody>
@@ -1455,7 +1470,53 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
     setLista(nova);setShowForm(false);setEditId(null);setForm(VAZIO);
   };
 
-  if(usuarioAtual.perfil!=="admin") return <Card><p style={{color:C.cinzaClaro,textAlign:"center",padding:20}}>⛔ Apenas administradores podem acessar as configurações.</p></Card>;
+  // Colaborador vê versão limitada
+  if(usuarioAtual.perfil==="colaborador"){
+    const eu = usuarios.find(u=>u.id===usuarioAtual.id)||usuarioAtual;
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:20}}>
+        <Card>
+          <h2 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:16,fontWeight:700}}>👤 Meu Perfil</h2>
+          <div style={{display:"flex",alignItems:"center",gap:16,padding:"14px 16px",background:C.cinzaFundo,borderRadius:10,marginBottom:16}}>
+            <Avatar u={eu} size={52}/>
+            <div>
+              <div style={{fontWeight:800,color:C.cinzaEscuro,fontSize:16}}>{eu.nome}</div>
+              <div style={{fontSize:12,color:C.cinzaClaro}}>{eu.email}</div>
+              <div style={{fontSize:11,color:C.cinzaClaro,marginTop:2}}>👤 Colaborador</div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Início do Expediente</div>
+              <div style={{fontSize:20,fontWeight:800,color:C.azulMedio}}>{eu.expediente?.inicio||"09:00"}</div>
+            </div>
+            <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Fim do Expediente</div>
+              <div style={{fontSize:20,fontWeight:800,color:C.azulMedio}}>{eu.expediente?.fim||"18:00"}</div>
+            </div>
+            <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10,gridColumn:"1/-1"}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Especialidades</div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+                {(eu.especialidades||[]).map(e=><span key={e} style={{background:C.azulEscuro,color:C.ciano,padding:"2px 8px",borderRadius:4,fontSize:11,fontWeight:800}}>{e}</span>)}
+              </div>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <h2 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:16,fontWeight:700}}>⚙ Informações do Sistema</h2>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            {[{label:"Verificação de atividade",valor:"A cada 1 hora",sub:"Aviso automático durante sessão"},{label:"Expediente",valor:"9h–12h e 14h–18h",sub:"7 horas por dia útil"},{label:"Encerramento automático",valor:"5 min após fim do expediente",sub:"Se sessão ainda estiver aberta"},{label:"Versão",valor:"INTEC v2.0",sub:"Com Supabase + Realtime"}].map(i=>(
+              <div key={i.label} style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:2}}>{i.label}</div>
+                <div style={{fontSize:13,fontWeight:700,color:C.azulMedio}}>{i.valor}</div>
+                <div style={{fontSize:11,color:C.cinzaClaro,marginTop:2}}>{i.sub}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const cores=["#2563a8","#7c3aed","#0891b2","#059669","#d97706","#dc2626","#db2777","#4f46e5","#0f766e","#9333ea"];
 
@@ -1618,7 +1679,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
   const rec=(form.parcelas||[]).reduce((a,p)=>a+(p.pago?p.valor:0),0);
   const pend=(form.parcelas||[]).reduce((a,p)=>a+(!p.pago?p.valor:0),0);
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(15,25,50,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
+    <div style={{position:"fixed",inset:0,background:"rgba(15,25,50,0.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:C.branco,borderRadius:16,width:"100%",maxWidth:700,maxHeight:"90vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
         <div style={{background:`linear-gradient(135deg,${C.azulEscuro},${C.azulMedio})`,padding:"20px 24px",borderRadius:"16px 16px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div><div style={{color:C.ciano,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:4}}>INTEC ENGENHARIA INTEGRADA</div><h2 style={{color:C.branco,margin:0,fontSize:18}}>{modo==="novo"?"Novo Projeto":"Editar Projeto"}</h2></div>
@@ -1628,14 +1689,14 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           <div>
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>📁 Identificação</h3>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <Inp label="Código *" value={form.codigo} onChange={v=>s("codigo",v)} required/>
+              <Inp label="Código *" value={form.codigo} onChange={v=>{ if(!form._doDrive) s("codigo",v); }} required style={{background:form._doDrive?"#f8fafc":undefined,cursor:form._doDrive?"not-allowed":"text"}}/>
               <Sel label="Tipo" value={form.tipo} onChange={v=>s("tipo",v)} options={Object.entries(TIPOS).map(([k,v])=>({value:k,label:`${k} – ${v}`}))}/>
-              <div style={{gridColumn:"1/-1"}}><Inp label="Cliente / Projeto *" value={form.cliente} onChange={v=>s("cliente",v)} required/></div>
+              <div style={{gridColumn:"1/-1"}}><Inp label={`Cliente / Projeto *${form._doDrive?" (importado do Drive — não editável)":""}`} value={form.cliente} onChange={v=>{ if(!form._doDrive) s("cliente",v); }} required style={{background:form._doDrive?"#f8fafc":undefined,cursor:form._doDrive?"not-allowed":"text"}}/></div>
               <Sel label="Responsável" value={form.responsavel} onChange={v=>s("responsavel",v)}
                 options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
               <Sel label="Co-responsável" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
                 options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-              <Sel label="Ano" value={form.ano} onChange={v=>s("ano",parseInt(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:y}))}/>
+              {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Ano</label><input value={form.ano} readOnly style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/></div> : <Sel label="Ano" value={form.ano} onChange={v=>s("ano",parseInt(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:y}))}/>}
               <Sel label="Status" value={form.status} onChange={v=>s("status",v)} options={Object.keys(STATUS_CONFIG).map(k=>({value:k,label:k}))}/>
             </div>
           </div>
@@ -1683,7 +1744,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           <div>
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Obs</h3>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>
+              {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
               <div style={{display:"flex",flexDirection:"column",gap:4}}>
                 <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Observações</label>
                 <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
@@ -1772,26 +1833,125 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
 }
 
 // ─── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({projetos,onAbrirProjeto,drive,onImportar}){
-  const ativos=projetos.filter(p=>!["CONCLUÍDO","Concluído"].includes(statusN(p.status)));
+function PainelAlertas({projetos, onAbrirProjeto}) {
+  const ativos = projetos.filter(p => !["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
+  const semContrato  = ativos.filter(p => !p.temContrato);
+  const semArt       = ativos.filter(p => !(p.obs||"").toLowerCase().includes("art") && !p.temContrato);
+  const atrasados    = ativos.filter(p => statusN(p.status) === "ATRASADO");
+  const vencendo     = ativos.filter(p => { const d=diasAte(p.dataEntregaPrevista); return d!==null&&d>=0&&d<=14; });
+  const vencidos     = ativos.filter(p => { const d=diasAte(p.dataEntregaPrevista); return d!==null&&d<0&&statusN(p.status)!=="ATRASADO"; });
+
+  const total = semContrato.length + atrasados.length + vencendo.length + vencidos.length;
+  const [filtro, setFiltro] = useState("todos");
+
+  const grupos = [
+    { id:"semContrato", label:"Sem Contrato",       cor:"#92400e", bg:"#fffbeb", borda:"#fde68a", icone:"📋", lista:semContrato },
+    { id:"atrasados",   label:"Atrasados",           cor:C.vermelho, bg:"#fff5f5", borda:"#fecaca", icone:"⚠️", lista:atrasados },
+    { id:"vencendo",    label:"Prazo Vencendo (14d)", cor:C.laranja, bg:"#fff7ed", borda:"#fed7aa", icone:"⏰", lista:vencendo },
+    { id:"vencidos",    label:"Prazo Vencido",        cor:"#9333ea", bg:"#faf5ff", borda:"#e9d5ff", icone:"📅", lista:vencidos },
+  ];
+
+  const listaFiltrada = filtro==="todos"
+    ? grupos.flatMap(g=>g.lista.map(p=>({...p,_alertaTipo:g.id,_alertaCor:g.cor,_alertaBg:g.bg,_alertaBorda:g.borda,_alertaLabel:g.label})))
+    : (grupos.find(g=>g.id===filtro)?.lista||[]).map(p=>({...p,_alertaTipo:filtro,_alertaCor:grupos.find(g=>g.id===filtro)?.cor,_alertaBg:grupos.find(g=>g.id===filtro)?.bg,_alertaBorda:grupos.find(g=>g.id===filtro)?.borda,_alertaLabel:grupos.find(g=>g.id===filtro)?.label}));
+
+  // Deduplicar por id
+  const vistos=new Set();
+  const listaDedup=listaFiltrada.filter(p=>{ if(vistos.has(p.id)) return false; vistos.add(p.id); return true; });
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Resumo */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+        {[{id:"todos",label:"Total de Alertas",valor:total,cor:C.vermelho,i:"🔔"},
+          ...grupos.map(g=>({id:g.id,label:g.label,valor:g.lista.length,cor:g.cor,i:g.icone}))
+        ].map(k=>(
+          <div key={k.id} onClick={()=>setFiltro(k.id)}
+            style={{padding:"12px 14px",borderRadius:10,background:filtro===k.id?k.cor:"white",border:`2px solid ${filtro===k.id?k.cor:C.cinzaCard}`,cursor:"pointer",textAlign:"center",transition:"all 0.2s",boxShadow:filtro===k.id?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
+            <div style={{fontSize:20}}>{k.i}</div>
+            <div style={{fontSize:22,fontWeight:800,color:filtro===k.id?"white":k.cor,lineHeight:1}}>{k.valor}</div>
+            <div style={{fontSize:10,color:filtro===k.id?"rgba(255,255,255,0.85)":C.cinzaClaro,fontWeight:600,marginTop:3}}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista */}
+      <Card>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>
+            {filtro==="todos"?"Todos os Alertas":grupos.find(g=>g.id===filtro)?.label} ({listaDedup.length})
+          </h3>
+        </div>
+        {listaDedup.length===0
+          ? <p style={{textAlign:"center",color:C.verde,padding:20,fontWeight:600}}>✅ Nenhum alerta nesta categoria!</p>
+          : <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {listaDedup.map(p=>{
+              const d = diasAte(p.dataEntregaPrevista);
+              return (
+                <div key={p.id+p._alertaTipo} onClick={()=>onAbrirProjeto(p)}
+                  style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",
+                    background:p._alertaBg,borderRadius:8,cursor:"pointer",border:`1px solid ${p._alertaBorda}`,
+                    transition:"all 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.opacity="0.85"}
+                  onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,fontWeight:800,color:C.azulMedio}}>{p.codigo}</span>
+                      <span style={{fontSize:11,background:p._alertaCor,color:"white",padding:"1px 7px",borderRadius:10,fontWeight:700}}>{p._alertaLabel}</span>
+                    </div>
+                    <div style={{fontSize:12,color:C.cinzaEscuro,marginTop:3}}>{p.cliente.substring(0,55)}</div>
+                    {p.responsavel&&<div style={{fontSize:11,color:C.cinzaClaro,marginTop:2}}>👤 {p.responsavel}</div>}
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0,marginLeft:12}}>
+                    {d!==null&&<div style={{fontSize:12,fontWeight:700,color:d<0?C.vermelho:d<=7?C.laranja:C.amarelo}}>
+                      {d<0?`${Math.abs(d)}d atrasado`:d===0?"Vence hoje":`${d}d restantes`}
+                    </div>}
+                    <div style={{fontSize:10,color:C.cinzaClaro}}>{p.dataEntregaPrevista?`Entrega: ${p.dataEntregaPrevista.split("-").reverse().join("/")}`:""}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>}
+      </Card>
+    </div>
+  );
+}
+
+function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
+  const [abaD,setAbaD] = useState("visao");
+  const isColab = usuarioAtual?.perfil==="colaborador";
+  const ativos=projetos.filter(p=>!["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
   const porStatus={};projetos.forEach(p=>{const s=statusN(p.status);porStatus[s]=(porStatus[s]||0)+1;});
   const recTotal=projetos.reduce((a,p)=>a+(p.parcelas||[]).reduce((b,x)=>b+x.valor,0),0);
   const recRecebida=projetos.reduce((a,p)=>a+(p.parcelas||[]).reduce((b,x)=>b+(x.pago?x.valor:0),0),0);
   const porTipo={};projetos.forEach(p=>{porTipo[p.tipo]=(porTipo[p.tipo]||0)+1;});
-  const alertas=ativos.filter(p=>{const d=diasAte(p.dataEntregaPrevista);return d!==null&&d<=7&&d>-60;});
   const semC=ativos.filter(p=>!p.temContrato);
-  return(<div style={{display:"flex",flexDirection:"column",gap:24}}>
-    <PainelDrive drive={drive} projetosExistentes={projetos} onImportar={onImportar}/>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16}}>
-      {[{label:"Ativos",valor:ativos.length,cor:C.azulMedio,i:"📂"},{label:"Concluídos",valor:porStatus["CONCLUÍDO"]||0,cor:C.verde,i:"✅"},{label:"Atrasados",valor:porStatus["ATRASADO"]||0,cor:C.vermelho,i:"⚠️"},{label:"Pausados",valor:porStatus["PAUSADO"]||0,cor:C.amarelo,i:"⏸"}].map(k=>(
-        <Card key={k.label} style={{textAlign:"center",borderTop:`3px solid ${k.cor}`}}><div style={{fontSize:26}}>{k.i}</div><div style={{fontSize:34,fontWeight:800,color:k.cor,lineHeight:1}}>{k.valor}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600,marginTop:4}}>{k.label}</div></Card>
+  const totalAlertas=ativos.filter(p=>!p.temContrato||statusN(p.status)==="ATRASADO"||(()=>{const d=diasAte(p.dataEntregaPrevista);return d!==null&&d<=14;})()).length;
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:20}}>
+    {/* Sub-abas do Dashboard */}
+    <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.cinzaCard}`,paddingBottom:0}}>
+      {[{id:"visao",label:"📊 Visão Geral"},{id:"alertas",label:`🔔 Alertas${totalAlertas>0?` (${totalAlertas})`:""}`}].map(t=>(
+        <button key={t.id} onClick={()=>setAbaD(t.id)} style={{background:"none",border:"none",padding:"10px 18px",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:abaD===t.id?700:500,color:abaD===t.id?C.azulMedio:C.cinzaClaro,borderBottom:abaD===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",marginBottom:-2,transition:"all 0.15s"}}>
+          {t.label}
+        </button>
       ))}
-      <Card style={{textAlign:"center",borderTop:`3px solid ${C.verde}`}}><div style={{fontSize:26}}>💰</div><div style={{fontSize:18,fontWeight:800,color:C.verde,lineHeight:1}}>{fmt(recRecebida)}</div><div style={{fontSize:11,color:C.cinzaClaro}}>de {fmt(recTotal)}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600}}>Receita</div></Card>
-      <Card style={{textAlign:"center",borderTop:`3px solid ${C.laranja}`}}><div style={{fontSize:26}}>📋</div><div style={{fontSize:34,fontWeight:800,color:C.laranja,lineHeight:1}}>{semC.length}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600,marginTop:4}}>Sem Contrato</div></Card>
     </div>
-    {(alertas.length>0||semC.length>0)&&<Card style={{borderLeft:`4px solid ${C.vermelho}`}}><h3 style={{color:C.vermelho,margin:"0 0 12px",fontSize:14,fontWeight:700}}>🔔 Alertas</h3><div style={{display:"flex",flexDirection:"column",gap:8}}>{alertas.map(p=>{const d=diasAte(p.dataEntregaPrevista);return <div key={p.id} onClick={()=>onAbrirProjeto(p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#fff5f5",borderRadius:8,cursor:"pointer",border:"1px solid #fecaca"}}><span style={{fontSize:12,fontWeight:700,color:C.cinzaEscuro}}>{p.codigo} — {p.cliente.substring(0,40)}</span><span style={{fontSize:11,fontWeight:700,color:d<0?C.vermelho:C.laranja,whiteSpace:"nowrap"}}>{d<0?`${Math.abs(d)}d atrasado`:`vence em ${d}d`}</span></div>;})} {semC.slice(0,3).map(p=><div key={p.id+"sc"} onClick={()=>onAbrirProjeto(p)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"#fffbeb",borderRadius:8,cursor:"pointer",border:"1px solid #fde68a"}}><span style={{fontSize:12,fontWeight:700,color:C.cinzaEscuro}}>{p.codigo} — {p.cliente.substring(0,40)}</span><span style={{fontSize:11,fontWeight:700,color:"#92400e"}}>⚠ Sem contrato</span></div>)}</div></Card>}
-    <Card><h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14,fontWeight:700}}>📊 Projetos por Tipo</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>{Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).map(([tipo,qtd])=><div key={tipo} style={{padding:"10px 14px",background:C.cinzaFundo,borderRadius:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:12,fontWeight:800,color:C.azulEscuro}}>{tipo}</div><div style={{fontSize:10,color:C.cinzaClaro}}>{TIPOS[tipo]||tipo}</div></div><span style={{fontSize:22,fontWeight:800,color:C.azulMedio}}>{qtd}</span></div>)}</div></Card>
-    <div><h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14,fontWeight:700}}>🔥 Projetos em Aberto</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>{ativos.slice(0,8).map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}</div></div>
+
+    {abaD==="alertas" && <PainelAlertas projetos={projetos} onAbrirProjeto={onAbrirProjeto}/>}
+
+    {abaD==="visao" && <>
+      <PainelDrive drive={drive} projetosExistentes={projetos} onImportar={onImportar}/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16}}>
+        {[{label:"Ativos",valor:ativos.length,cor:C.azulMedio,i:"📂"},{label:"Concluídos",valor:porStatus["CONCLUÍDO"]||0,cor:C.verde,i:"✅"},{label:"Atrasados",valor:porStatus["ATRASADO"]||0,cor:C.vermelho,i:"⚠️"},{label:"Pausados",valor:porStatus["PAUSADO"]||0,cor:C.amarelo,i:"⏸"}].map(k=>(
+          <Card key={k.label} style={{textAlign:"center",borderTop:`3px solid ${k.cor}`}}><div style={{fontSize:26}}>{k.i}</div><div style={{fontSize:34,fontWeight:800,color:k.cor,lineHeight:1}}>{k.valor}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600,marginTop:4}}>{k.label}</div></Card>
+        ))}
+        {!isColab&&<Card style={{textAlign:"center",borderTop:`3px solid ${C.verde}`}}><div style={{fontSize:26}}>💰</div><div style={{fontSize:18,fontWeight:800,color:C.verde,lineHeight:1}}>{fmt(recRecebida)}</div><div style={{fontSize:11,color:C.cinzaClaro}}>de {fmt(recTotal)}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600}}>Receita</div></Card>}
+        <Card style={{textAlign:"center",borderTop:`3px solid ${C.laranja}`}}><div style={{fontSize:26}}>📋</div><div style={{fontSize:34,fontWeight:800,color:C.laranja,lineHeight:1}}>{semC.length}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600,marginTop:4}}>Sem Contrato</div></Card>
+      </div>
+      <Card><h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14,fontWeight:700}}>📊 Projetos por Tipo</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>{Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).map(([tipo,qtd])=><div key={tipo} style={{padding:"10px 14px",background:C.cinzaFundo,borderRadius:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:12,fontWeight:800,color:C.azulEscuro}}>{tipo}</div><div style={{fontSize:10,color:C.cinzaClaro}}>{TIPOS[tipo]||tipo}</div></div><span style={{fontSize:22,fontWeight:800,color:C.azulMedio}}>{qtd}</span></div>)}</div></Card>
+      <div><h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14,fontWeight:700}}>🔥 Projetos em Aberto</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>{ativos.slice(0,8).map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}</div></div>
+    </>}
   </div>);
 }
 
@@ -2034,14 +2194,17 @@ export default function App(){
 
   if(!user) return <TelaLogin usuarios={usuarios} onLogin={fazerLogin}/>;
 
+  const isAdmin    = user.perfil === "admin";
+  const isGestorOuAdmin = ["admin","gestor"].includes(user.perfil);
+  const isColab    = user.perfil === "colaborador";
   const abas=[
     {id:"dashboard",    label:"Dashboard",       icone:"📊"},
     {id:"projetos",     label:"Projetos",         icone:"📁"},
-    {id:"financeiro",   label:"Financeiro",       icone:"💰"},
+    ...(!isColab ? [{id:"financeiro", label:"Financeiro", icone:"💰"}] : []),
     {id:"horas",        label:"Banco de Horas",   icone:"⏱"},
     {id:"produtividade",label:"Produtividade",    icone:"📈"},
     {id:"calendario",   label:"Calendario",       icone:"📅"},
-    ...(["admin","gestor"].includes(user.perfil)?[{id:"config",label:"Configuracoes",icone:"⚙"}]:[]),
+    {id:"config",       label:"Configuracoes",    icone:"⚙"},
   ];
 
   return(
@@ -2068,7 +2231,7 @@ export default function App(){
       </div>
 
       <main style={{maxWidth:1400,margin:"0 auto",padding:"28px 24px"}}>
-        {aba==="dashboard" &&<Dashboard projetos={projetos} onAbrirProjeto={abrirP} drive={drive} onImportar={importar}/>}
+        {aba==="dashboard" &&<Dashboard projetos={projetos} onAbrirProjeto={abrirP} drive={drive} onImportar={importar} usuarioAtual={user}/>}
         {aba==="projetos"  &&<ListaProjetos projetos={projetos} onAbrirProjeto={abrirP} onNovoProjeto={novoP} usuarios={usuarios}/>}
         {aba==="financeiro"&&<Financeiro projetos={projetos}/>}
         {aba==="horas"          &&<BancoHoras registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
