@@ -36,31 +36,31 @@ const TIPOS = {
 const USUARIOS_PADRAO = [
   { id:"vinicius", nome:"Vinicius", email:"intecestruturas4@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#2563a8", iniciais:"VI", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     salario:0, especialidades:["PE","PR","LT","PF"] },
   { id:"leonardo", nome:"Leonardo", email:"intecestruturas2@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#0891b2", iniciais:"LE", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     especialidades:["PE","PR","LT","PF"] },
   { id:"claudio", nome:"Claudio", email:"intecestruturas3@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#059669", iniciais:"CL", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     especialidades:["PE","PR","LT","PF"] },
   { id:"heriston", nome:"Heriston", email:"direcao@engenhariaintec.com.br", senha:"1234",
     perfil:"gestor", cor:"#7c3aed", iniciais:"HE", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     especialidades:["PE","PR","LT","PF","CT"] },
   { id:"gustavo", nome:"Gustavo", email:"intecestruturas5@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#f59e0b", iniciais:"GU", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     especialidades:["PE","PR","LT","PF"] },
   { id:"jonathan", nome:"Jonathan", email:"intecobras2@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#dc2626", iniciais:"JO", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     especialidades:["EL","PH"] },
   { id:"pablo", nome:"Pablo", email:"inteccompplementares1@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#db2777", iniciais:"PA", ativo:true,
-    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"}, modo:"E" },
     especialidades:["EL","PH"] },
 ];
 
@@ -73,33 +73,71 @@ const statusN    = s => { if(!s) return "Novo/Definir"; if(s==="Concluído"||s==
 const horaMin    = h => { if(!h) return 0; const [hh,mm]=h.split(":").map(Number); return hh*60+mm; };
 
 // Calcula horas diárias de trabalho baseado no expediente do usuário
-// Suporta 1 ou 2 turnos: { turno1: {inicio, fim}, turno2: {ativo, inicio, fim} }
+// Suporta 1 ou 2 turnos com modo E (ambos) ou OU (apenas 1 turno por dia)
+// Estrutura: { turno1:{inicio,fim}, turno2:{ativo,inicio,fim}, modo:"E"|"OU" }
 const calcHorasDia = (expediente) => {
-  if (!expediente) return 7; // fallback padrão
-  // Formato novo com turnos
+  if (!expediente) return 7;
   if (expediente.turno1) {
-    const t1 = expediente.turno1;
-    const h1 = t1.inicio && t1.fim ? Math.max(0, (horaMin(t1.fim) - horaMin(t1.inicio)) / 60) : 0;
-    let h2 = 0;
-    if (expediente.turno2?.ativo && expediente.turno2.inicio && expediente.turno2.fim) {
-      h2 = Math.max(0, (horaMin(expediente.turno2.fim) - horaMin(expediente.turno2.inicio)) / 60);
-    }
+    const h1 = expediente.turno1.inicio && expediente.turno1.fim
+      ? Math.max(0, (horaMin(expediente.turno1.fim) - horaMin(expediente.turno1.inicio)) / 60) : 0;
+    const h2 = expediente.turno2?.ativo && expediente.turno2.inicio && expediente.turno2.fim
+      ? Math.max(0, (horaMin(expediente.turno2.fim) - horaMin(expediente.turno2.inicio)) / 60) : 0;
+    // Modo OU: conta apenas o maior turno (referência de 1 turno por dia)
+    if (expediente.turno2?.ativo && expediente.modo === "OU") return Math.max(h1, h2);
+    // Modo E (padrão): soma os dois turnos
     return Math.round((h1 + h2) * 10) / 10;
   }
-  // Formato antigo (inicio/fim simples) — converte na hora
   if (expediente.inicio && expediente.fim) {
     return Math.max(0, (horaMin(expediente.fim) - horaMin(expediente.inicio)) / 60);
   }
   return 7;
 };
 
-// Retorna hora de fim do último turno (para auto-encerramento)
+// Verifica se uma hora está dentro do expediente do colaborador
+// Retorna { eHoraExtra: bool, minutosExtras: number }
+const verificarHoraExtra = (horaInicio, horaFim, expediente) => {
+  if (!horaInicio || !horaFim || !expediente) return { eHoraExtra: false, minutosExtras: 0 };
+  const ini = horaMin(horaInicio);
+  const fim = horaMin(horaFim);
+  const durTotal = Math.max(0, fim - ini);
+
+  const turnos = [];
+  if (expediente.turno1?.inicio && expediente.turno1?.fim) {
+    turnos.push({ ini: horaMin(expediente.turno1.inicio), fim: horaMin(expediente.turno1.fim) });
+  }
+  if (expediente.turno2?.ativo && expediente.turno2?.inicio && expediente.turno2?.fim) {
+    turnos.push({ ini: horaMin(expediente.turno2.inicio), fim: horaMin(expediente.turno2.fim) });
+  }
+  // Formato antigo
+  if (turnos.length === 0 && expediente.inicio && expediente.fim) {
+    turnos.push({ ini: horaMin(expediente.inicio), fim: horaMin(expediente.fim) });
+  }
+
+  // Calcula minutos dentro do expediente
+  let minDentro = 0;
+  for (const t of turnos) {
+    const sobreposIni = Math.max(ini, t.ini);
+    const sobreposFim = Math.min(fim, t.fim);
+    if (sobreposFim > sobreposIni) minDentro += sobreposFim - sobreposIni;
+  }
+  const minutosExtras = Math.max(0, durTotal - minDentro);
+  return { eHoraExtra: minutosExtras > 0, minutosExtras };
+};
+
+// Label resumido do expediente
+const labelModoExpediente = (expediente) => {
+  if (!expediente?.turno2?.ativo) return "";
+  return expediente.modo === "OU" ? "Manhã OU Tarde (1 turno/dia)" : "Manhã E Tarde (2 turnos/dia)";
+};
+
+// Retorna hora de fim do último turno ativo (para auto-encerramento)
+// No modo OU, usa o turno mais tarde do dia como referência
 const fimExpediente = (expediente) => {
   if (!expediente) return "18:00";
-  if (expediente.turno2?.ativo && expediente.turno2.fim) return expediente.turno2.fim;
-  if (expediente.turno1?.fim) return expediente.turno1.fim;
-  if (expediente.fim) return expediente.fim;
-  return "18:00";
+  const f1 = expediente.turno1?.fim || expediente.fim || "18:00";
+  const f2 = expediente.turno2?.ativo ? (expediente.turno2?.fim || "18:00") : "00:00";
+  if (expediente.turno2?.ativo) return f2 > f1 ? f2 : f1; // sempre o mais tarde
+  return f1;
 };
 
 // Formata expediente para exibição
@@ -107,7 +145,10 @@ const labelExpediente = (expediente) => {
   if (!expediente) return "—";
   if (expediente.turno1) {
     const t1 = `${expediente.turno1.inicio}–${expediente.turno1.fim}`;
-    if (expediente.turno2?.ativo) return `${t1} e ${expediente.turno2.inicio}–${expediente.turno2.fim}`;
+    if (expediente.turno2?.ativo) {
+      const sep = expediente.modo === "OU" ? " OU " : " E ";
+      return `${t1}${sep}${expediente.turno2.inicio}–${expediente.turno2.fim}`;
+    }
     return t1;
   }
   return `${expediente.inicio||"?"}–${expediente.fim||"?"}`;
@@ -275,34 +316,58 @@ function TelaLogin({usuarios,onLogin}){
 }
 
 // ─── MODAL CHECK-IN / AVISO ────────────────────────────────────────────────────
+// Categorias de sessão administrativa
+const CATS_ADMIN = [
+  { id:"orcamento",    label:"Orçamento",           icone:"💰" },
+  { id:"reuniao",      label:"Reunião",              icone:"🤝" },
+  { id:"atendimento",  label:"Atendimento ao Cliente",icone:"📞" },
+  { id:"financeiro",   label:"Financeiro/Adm",      icone:"📊" },
+  { id:"capacitacao",  label:"Capacitação/Estudo",   icone:"📚" },
+  { id:"visita",       label:"Visita Técnica",       icone:"🔍" },
+  { id:"outros",       label:"Outros",               icone:"📝" },
+];
+
 function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar,onMudar,onFechar}){
-  const [projSel,setProjSel] = useState(sessaoAtiva?.projetoId||"");
-  const [hi,setHi]           = useState(new Date().toTimeString().slice(0,5));
-  const [hf,setHf]           = useState(new Date().toTimeString().slice(0,5));
-  const [obs,setObs]         = useState("");
-  const [filtroAno,setFAno]  = useState("todos");
+  const [tipoSessao, setTipoSessao] = useState("projeto"); // "projeto" | "admin"
+  const [projSel,   setProjSel]     = useState(sessaoAtiva?.projetoId||"");
+  const [catSel,    setCatSel]      = useState("");
+  const [hi,        setHi]          = useState(new Date().toTimeString().slice(0,5));
+  const [hf,        setHf]          = useState(new Date().toTimeString().slice(0,5));
+  const [obs,       setObs]         = useState("");
+  const [filtroAno, setFAno]        = useState("todos");
 
-  // Anos disponíveis nos projetos ativos
-  const ativos = projetos.filter(p=>!["CONCLUÍDO","Concluído"].includes(statusN(p.status)));
-  const anos   = useMemo(()=>[...new Set(ativos.map(p=>p.ano))].filter(Boolean).sort((a,b)=>b-a), [ativos]);
-
-  // Filtra por ano e ordena alfabeticamente pelo cliente
+  const ativos = projetos.filter(p=>!["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
+  const anos   = useMemo(()=>[...new Set(ativos.map(p=>p.ano))].filter(Boolean).sort((a,b)=>b-a),[ativos]);
   const ativosFiltrados = useMemo(()=>{
     const lista = filtroAno==="todos" ? ativos : ativos.filter(p=>Number(p.ano)===Number(filtroAno));
     return [...lista].sort((a,b)=>{
-      // Ordenação numérica: extrai o número do início do código (ex: "05" de "05.PE.0125")
-      const na = parseInt((a.codigo||"").split(".")[0]) || 0;
-      const nb = parseInt((b.codigo||"").split(".")[0]) || 0;
-      if(na !== nb) return na - nb;
-      return (a.codigo||"").localeCompare(b.codigo||"","pt-BR");
+      const na=parseInt((a.codigo||"").split(".")[0])||0;
+      const nb=parseInt((b.codigo||"").split(".")[0])||0;
+      return na!==nb ? na-nb : (a.codigo||"").localeCompare(b.codigo||"","pt-BR");
     });
-  },[ativos, filtroAno]);
+  },[ativos,filtroAno]);
 
   const opts=[{value:"",label:"Selecione o projeto..."},...ativosFiltrados.map(p=>({value:p.id,label:`${p.codigo} — ${p.cliente.substring(0,50)}`}))];
 
+  // Botões de tipo de sessão
+  const BotoesTipo = () => (
+    <div style={{display:"flex",gap:8,marginBottom:4}}>
+      {[
+        {id:"projeto", label:"📁 Projetos",      sub:"Vincula a um projeto"},
+        {id:"admin",   label:"⚙ Administrativa", sub:"Orçamentos, reuniões..."},
+      ].map(t=>(
+        <div key={t.id} onClick={()=>{setTipoSessao(t.id);setProjSel("");setCatSel("");}}
+          style={{flex:1,padding:"10px 12px",borderRadius:10,border:`2px solid ${tipoSessao===t.id?C.azulMedio:C.cinzaCard}`,background:tipoSessao===t.id?C.azulEscuro:"white",cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+          <div style={{fontSize:14,fontWeight:700,color:tipoSessao===t.id?C.branco:C.cinzaEscuro}}>{t.label}</div>
+          <div style={{fontSize:11,color:tipoSessao===t.id?"rgba(255,255,255,0.7)":C.cinzaClaro,marginTop:2}}>{t.sub}</div>
+        </div>
+      ))}
+    </div>
+  );
+
   const wrap=(children,titulo,sub,gradFrom,gradTo)=>(
     <div style={{position:"fixed",inset:0,background:"rgba(15,25,50,0.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{background:C.branco,borderRadius:20,width:"100%",maxWidth:480,boxShadow:"0 24px 64px rgba(0,0,0,0.3)"}}>
+      <div style={{background:C.branco,borderRadius:20,width:"100%",maxWidth:500,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 64px rgba(0,0,0,0.3)"}}>
         <div style={{background:`linear-gradient(135deg,${gradFrom},${gradTo})`,padding:"20px 24px",borderRadius:"20px 20px 0 0"}}>
           <h2 style={{color:C.branco,margin:0,fontSize:18}}>{titulo}</h2>
           <p style={{color:"rgba(255,255,255,0.85)",margin:"4px 0 0",fontSize:13}}>{sub}</p>
@@ -313,44 +378,71 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
   );
 
   if(tipo==="checkin") return wrap(<>
-    {/* Filtro por ano */}
-    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-      <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,whiteSpace:"nowrap"}}>Filtrar por ano:</label>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {["todos",...anos].map(a=>(
-          <button key={a} onClick={()=>{setFAno(a);setProjSel("");}}
-            style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${filtroAno==a?C.azulMedio:C.cinzaCard}`,background:filtroAno==a?C.azulMedio:"transparent",color:filtroAno==a?C.branco:C.cinzaClaro,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
-            {a==="todos"?"Todos":a}
-          </button>
-        ))}
+    <BotoesTipo/>
+
+    {tipoSessao==="projeto" ? (<>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,whiteSpace:"nowrap"}}>Ano:</label>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {["todos",...anos].map(a=>(
+            <button key={a} onClick={()=>{setFAno(a);setProjSel("");}}
+              style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${filtroAno==a?C.azulMedio:C.cinzaCard}`,background:filtroAno==a?C.azulMedio:"transparent",color:filtroAno==a?C.branco:C.cinzaClaro,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+              {a==="todos"?"Todos":a}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
-    <Sel label={`Projeto * (${ativosFiltrados.length} disponíveis)`} value={projSel} onChange={setProjSel} options={opts}/>
+      <Sel label={`Projeto * (${ativosFiltrados.length} disponíveis)`} value={projSel} onChange={setProjSel} options={opts}/>
+    </>) : (<>
+      <div>
+        <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:8}}>Categoria *</label>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {CATS_ADMIN.map(c=>(
+            <div key={c.id} onClick={()=>setCatSel(c.id)}
+              style={{padding:"10px 12px",borderRadius:8,border:`2px solid ${catSel===c.id?C.azulMedio:C.cinzaCard}`,background:catSel===c.id?"#eff6ff":"white",cursor:"pointer",display:"flex",alignItems:"center",gap:8,transition:"all 0.15s"}}>
+              <span style={{fontSize:18}}>{c.icone}</span>
+              <span style={{fontSize:12,fontWeight:600,color:catSel===c.id?C.azulMedio:C.cinzaEscuro}}>{c.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>)}
+
     <Inp label="Hora de início" type="time" value={hi} onChange={setHi}/>
-    <Inp label="Observação (opcional)" value={obs} onChange={setObs} placeholder="Ex: Modelagem no Eberick..."/>
+    <Inp label="Observação (opcional)" value={obs} onChange={setObs} placeholder={tipoSessao==="projeto"?"Ex: Modelagem no Eberick...":"Ex: Orçamento para cliente X..."}/>
     <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
       <Btn variant="ghost" onClick={onFechar}>Agora não</Btn>
-      <Btn onClick={()=>onIniciar(projSel,hi,obs)} disabled={!projSel}>▶ Iniciar</Btn>
+      <Btn onClick={()=>onIniciar(tipoSessao==="projeto"?projSel:null, hi, obs, tipoSessao==="admin"?catSel:null)}
+        disabled={tipoSessao==="projeto"?!projSel:!catSel}>▶ Iniciar</Btn>
     </div>
-  </>, "⏱ Iniciar Sessão de Trabalho", `Olá, ${usuarioAtual.nome}! Em qual projeto você vai trabalhar?`, C.azulEscuro, C.azulMedio);
+  </>, "⏱ Iniciar Sessão de Trabalho", `Olá, ${usuarioAtual.nome}! O que você vai fazer?`, C.azulEscuro, C.azulMedio);
 
   if(tipo==="aviso") return wrap(<>
     {sessaoAtiva&&<div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10,fontSize:13}}>
-      <div style={{fontWeight:700,color:C.cinzaEscuro}}>Projeto atual:</div>
-      <div style={{color:C.azulMedio,marginTop:4}}>{projetos.find(p=>p.id===sessaoAtiva.projetoId)?.cliente||"—"}</div>
+      <div style={{fontWeight:700,color:C.cinzaEscuro}}>
+        {sessaoAtiva.categoriaAdmin
+          ? `⚙ ${CATS_ADMIN.find(c=>c.id===sessaoAtiva.categoriaAdmin)?.label||"Administrativa"}`
+          : "📁 Projeto:"}
+      </div>
+      <div style={{color:C.azulMedio,marginTop:4}}>
+        {sessaoAtiva.categoriaAdmin
+          ? (sessaoAtiva.obs||"—")
+          : projetos.find(p=>p.id===sessaoAtiva.projetoId)?.cliente||"—"}
+      </div>
       <div style={{color:C.cinzaClaro,fontSize:11,marginTop:2}}>Iniciado às {sessaoAtiva.horaInicio}</div>
     </div>}
     <Btn onClick={()=>onFechar("continuar")} style={{justifyContent:"center"}}>✅ Sim, ainda estou trabalhando</Btn>
+    <div style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Mudei para outro projeto:</div>
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-      <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Ano:</label>
+      <label style={{fontSize:11,color:C.cinzaClaro}}>Ano:</label>
       {["todos",...anos].map(a=>(
         <button key={a} onClick={()=>{setFAno(a);setProjSel("");}}
-          style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${filtroAno==a?C.azulMedio:C.cinzaCard}`,background:filtroAno==a?C.azulMedio:"transparent",color:filtroAno==a?C.branco:C.cinzaClaro,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"3px 8px",borderRadius:20,border:`1.5px solid ${filtroAno==a?C.azulMedio:C.cinzaCard}`,background:filtroAno==a?C.azulMedio:"transparent",color:filtroAno==a?C.branco:C.cinzaClaro,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
           {a==="todos"?"Todos":a}
         </button>
       ))}
     </div>
-    <Sel label="Mudei de projeto:" value={projSel} onChange={setProjSel} options={opts}/>
+    <Sel label="" value={projSel} onChange={setProjSel} options={opts}/>
     {projSel&&projSel!==sessaoAtiva?.projetoId&&<Btn variant="secondary" onClick={()=>onMudar(projSel)} style={{justifyContent:"center"}}>🔄 Mudar para este projeto</Btn>}
     <Btn variant="danger" onClick={()=>onFechar("encerrar")} style={{justifyContent:"center"}}>⏹ Parei de trabalhar</Btn>
   </>, "⏰ Verificação de Atividade", "Já faz 1 hora — você ainda está trabalhando?", C.amarelo, C.laranja);
@@ -373,7 +465,6 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
       </div>
     </>, "🏁 Encerrar Expediente", "Registre o horário de saída para finalizar o dia", C.azulEscuro, C.azulMedio);
   }
-
   return null;
 }
 
@@ -1397,11 +1488,12 @@ function BancoHoras({registros,usuarios,projetos,usuarioAtual,onAbrirEncerrament
     return true;
   }),[registros,filtroUser,filtroMes,usuarioAtual,isGestor]);
 
-  const resumoUser=useMemo(()=>{const m={};filtrados.forEach(r=>{if(!m[r.usuarioId])m[r.usuarioId]={totalMin:0,sessoes:0,projs:new Set()};m[r.usuarioId].totalMin+=r.duracaoMin||0;m[r.usuarioId].sessoes++;if(r.projetoId)m[r.usuarioId].projs.add(r.projetoId);});return m;},[filtrados]);
+  const resumoUser=useMemo(()=>{const m={};filtrados.forEach(r=>{if(!m[r.usuarioId])m[r.usuarioId]={totalMin:0,sessoes:0,projs:new Set(),totalExtras:0};m[r.usuarioId].totalMin+=r.duracaoMin||0;m[r.usuarioId].sessoes++;m[r.usuarioId].totalExtras+=r.minutosExtras||0;if(r.projetoId)m[r.usuarioId].projs.add(r.projetoId);});return m;},[filtrados]);
 
   const resumoProj=useMemo(()=>{const m={};filtrados.forEach(r=>{if(!r.projetoId)return;if(!m[r.projetoId])m[r.projetoId]={totalMin:0,sessoes:0};m[r.projetoId].totalMin+=r.duracaoMin||0;m[r.projetoId].sessoes++;});return m;},[filtrados]);
 
   const sessaoAberta=registros.find(r=>r.usuarioId===usuarioAtual.id&&!r.horaFim);
+  const totalExtras = filtrados.filter(r=>r.usuarioId===usuarioAtual.id||(["admin","gestor"].includes(usuarioAtual.perfil)&&filtroUser==="todos")).reduce((a,r)=>a+(r.minutosExtras||0),0);
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
@@ -1439,6 +1531,7 @@ function BancoHoras({registros,usuarios,projetos,usuarioAtual,onAbrirEncerrament
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}><Avatar u={u} size={36}/><div style={{fontWeight:700,color:C.cinzaEscuro,fontSize:13}}>{u.nome}</div></div>
               <div style={{fontSize:24,fontWeight:800,color:u.cor||C.azulMedio}}>{fmtDuracao(d.totalMin)}</div>
               <div style={{fontSize:11,color:C.cinzaClaro,marginTop:4}}>{d.sessoes} sessão(ões) • {d.projs.size} projeto(s)</div>
+              {d.totalExtras>0&&<div style={{fontSize:11,color:C.laranja,fontWeight:700,marginTop:2}}>⏰ +{fmtDuracao(d.totalExtras)} extras</div>}
             </Card>);
           })}
         </div>
@@ -1500,7 +1593,7 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
   const [lista,setLista]=useState(usuarios);
   const [editId,setEditId]=useState(null);
   const [showForm,setShowForm]=useState(false);
-  const VAZIO={id:"",nome:"",email:"",senha:"",salario:0,perfil:"colaborador",cor:"#2563a8",iniciais:"",ativo:true,expediente:{turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:true,inicio:"14:00",fim:"18:00"}},especialidades:[]};
+  const VAZIO={id:"",nome:"",email:"",senha:"",salario:0,perfil:"colaborador",cor:"#2563a8",iniciais:"",ativo:true,expediente:{turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:true,inicio:"14:00",fim:"18:00"},modo:"E"},especialidades:[]};
   const [form,setForm]=useState(VAZIO);
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
   const se=(k,v)=>setForm(f=>({...f,expediente:{...f.expediente,[k]:v}}));
@@ -1533,18 +1626,28 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Turno 1</div>
-              <div style={{fontSize:18,fontWeight:800,color:C.azulMedio}}>{eu.expediente?.turno1?.inicio||eu.expediente?.inicio||"09:00"} – {eu.expediente?.turno1?.fim||eu.expediente?.fim||"12:00"}</div>
-            </div>
-            <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>{eu.expediente?.turno2?.ativo?"Turno 2":"Horário"}</div>
+              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Turno 1 — Manhã</div>
               <div style={{fontSize:18,fontWeight:800,color:C.azulMedio}}>
-                {eu.expediente?.turno2?.ativo?`${eu.expediente.turno2.inicio} – ${eu.expediente.turno2.fim}`:"Somente manhã"}
+                {eu.expediente?.turno1?.inicio||eu.expediente?.inicio||"09:00"} – {eu.expediente?.turno1?.fim||eu.expediente?.fim||"12:00"}
               </div>
             </div>
+            {eu.expediente?.turno2?.ativo
+              ? <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Turno 2 — Tarde</div>
+                  <div style={{fontSize:18,fontWeight:800,color:C.azulMedio}}>{eu.expediente.turno2.inicio} – {eu.expediente.turno2.fim}</div>
+                  <div style={{fontSize:11,color:C.cinzaClaro,marginTop:3}}>
+                    {eu.expediente.modo==="OU"?"🔀 Trabalha 1 turno/dia (flexível)":"🔁 Trabalha os 2 turnos"}
+                  </div>
+                </div>
+              : <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Turno 2</div>
+                  <div style={{fontSize:14,color:C.cinzaClaro}}>Somente 1 turno</div>
+                </div>
+            }
             <div style={{padding:"12px 16px",background:C.azulEscuro,borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.ciano,marginBottom:4}}>Total por Dia</div>
+              <div style={{fontSize:11,fontWeight:700,color:C.ciano,marginBottom:4}}>Meta Diária</div>
               <div style={{fontSize:22,fontWeight:800,color:C.branco}}>{calcHorasDia(eu.expediente)}h</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.6)"}}>{labelModoExpediente(eu.expediente)||"por dia"}</div>
             </div>
             <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10,gridColumn:"1/-1"}}>
               <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Especialidades</div>
@@ -1609,28 +1712,59 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
               </div>
               {/* Turno 2 */}
               <div style={{gridColumn:"1/-1"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"8px 12px",background:form.expediente?.turno2?.ativo?"#f0fdf4":"#f8fafc",borderRadius:8,border:`1px solid ${form.expediente?.turno2?.ativo?"#86efac":C.cinzaCard}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"10px 14px",background:form.expediente?.turno2?.ativo?"#eff6ff":"#f8fafc",borderRadius:8,border:`1px solid ${form.expediente?.turno2?.ativo?C.azulClaro:C.cinzaCard}`}}>
                   <input type="checkbox" checked={!!form.expediente?.turno2?.ativo}
                     onChange={e=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,ativo:e.target.checked}}}))}
                     id="t2ativo" style={{cursor:"pointer",width:15,height:15}}/>
-                  <label htmlFor="t2ativo" style={{fontSize:13,fontWeight:600,cursor:"pointer",color:form.expediente?.turno2?.ativo?"#166534":C.cinzaClaro}}>
-                    {form.expediente?.turno2?.ativo?"✓ Turno 2 ativo":"Adicionar Turno 2 (tarde)"}
-                    {form.expediente?.turno2?.ativo&&form.expediente?.turno2?.inicio&&form.expediente?.turno2?.fim
-                      ? <span style={{fontWeight:400,marginLeft:8,fontSize:11}}>{Math.max(0,(horaMin(form.expediente.turno2.fim)-horaMin(form.expediente.turno2.inicio))/60).toFixed(1)}h</span>
-                      : ""}
+                  <label htmlFor="t2ativo" style={{fontSize:13,fontWeight:600,cursor:"pointer",color:form.expediente?.turno2?.ativo?C.azulMedio:C.cinzaClaro}}>
+                    {form.expediente?.turno2?.ativo?"✓ Turno 2 cadastrado":"+ Adicionar Turno 2"}
                   </label>
-                  {form.expediente?.turno1&&form.expediente?.turno2?.ativo&&(
-                    <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:C.azulMedio}}>
+                  {form.expediente?.turno2?.ativo&&(
+                    <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:C.azulEscuro}}>
                       Total: {calcHorasDia(form.expediente)}h/dia
                     </span>
                   )}
                 </div>
-                {form.expediente?.turno2?.ativo&&(
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                    <Inp label="Entrada tarde" value={form.expediente?.turno2?.inicio||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,inicio:v}}}))} type="time"/>
-                    <Inp label="Saída tarde" value={form.expediente?.turno2?.fim||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,fim:v}}}))} type="time"/>
+
+                {form.expediente?.turno2?.ativo&&(<>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                    <Inp label="Entrada turno 2" value={form.expediente?.turno2?.inicio||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,inicio:v}}}))} type="time"/>
+                    <Inp label="Saída turno 2" value={form.expediente?.turno2?.fim||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,fim:v}}}))} type="time"/>
                   </div>
-                )}
+
+                  {/* Modo E/OU */}
+                  <div style={{padding:"12px 14px",background:"#f0f4f8",borderRadius:10,border:`1px solid ${C.cinzaCard}`}}>
+                    <div style={{fontSize:12,fontWeight:700,color:C.cinzaEscuro,marginBottom:10}}>
+                      Como este colaborador trabalha?
+                    </div>
+                    <div style={{display:"flex",gap:10}}>
+                      {[
+                        { val:"E",  titulo:"Manhã E Tarde",    sub:"Trabalha os 2 turnos todo dia",      icone:"🔁" },
+                        { val:"OU", titulo:"Manhã OU Tarde",   sub:"Trabalha só 1 turno por dia (flexível)", icone:"🔀" },
+                      ].map(opt=>{
+                        const ativo = (form.expediente?.modo||"E") === opt.val;
+                        return (
+                          <div key={opt.val} onClick={()=>setForm(f=>({...f,expediente:{...f.expediente,modo:opt.val}}))}
+                            style={{flex:1,padding:"10px 14px",borderRadius:10,border:`2px solid ${ativo?C.azulMedio:C.cinzaCard}`,background:ativo?C.azulEscuro:"white",cursor:"pointer",transition:"all 0.15s"}}>
+                            <div style={{fontSize:18,marginBottom:4}}>{opt.icone}</div>
+                            <div style={{fontSize:13,fontWeight:700,color:ativo?C.branco:C.cinzaEscuro}}>{opt.titulo}</div>
+                            <div style={{fontSize:11,color:ativo?"rgba(255,255,255,0.7)":C.cinzaClaro,marginTop:2}}>{opt.sub}</div>
+                            {ativo&&opt.val==="E"&&<div style={{fontSize:11,color:C.ciano,marginTop:4,fontWeight:700}}>{calcHorasDia(form.expediente)}h/dia contabilizadas</div>}
+                            {ativo&&opt.val==="OU"&&<div style={{fontSize:11,color:C.ciano,marginTop:4,fontWeight:700}}>{Math.max(
+                              form.expediente?.turno1?.inicio&&form.expediente?.turno1?.fim ? Math.max(0,(horaMin(form.expediente.turno1.fim)-horaMin(form.expediente.turno1.inicio))/60) : 0,
+                              form.expediente?.turno2?.inicio&&form.expediente?.turno2?.fim ? Math.max(0,(horaMin(form.expediente.turno2.fim)-horaMin(form.expediente.turno2.inicio))/60) : 0
+                            ).toFixed(1)}h/dia contabilizadas</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {(form.expediente?.modo||"E")==="OU"&&(
+                      <div style={{marginTop:10,padding:"8px 12px",background:"#fffbeb",borderRadius:8,border:"1px solid #fde68a",fontSize:12,color:"#92400e"}}>
+                        ℹ️ O sistema aceita registro em qualquer um dos 2 turnos, mas conta apenas 1 turno por dia na meta de produtividade.
+                      </div>
+                    )}
+                  </div>
+                </>)}
               </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:6}}>Cor do avatar</label>
@@ -1662,7 +1796,9 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,color:C.cinzaEscuro}}>{u.nome}</div>
                 <div style={{fontSize:11,color:C.cinzaClaro,marginTop:2}}>
-                    {u.email} • {u.perfil==="admin"?"👑 Admin":u.perfil==="gestor"?"🔑 Gestor":"👤 Colaborador"} • ⏰ {labelExpediente(u.expediente)} ({calcHorasDia(u.expediente)}h/dia)
+                    {u.email} • {u.perfil==="admin"?"👑 Admin":u.perfil==="gestor"?"🔑 Gestor":"👤 Colaborador"} •{" "}
+                    ⏰ {labelExpediente(u.expediente)} ({calcHorasDia(u.expediente)}h/dia)
+                    {u.expediente?.turno2?.ativo&&<span style={{marginLeft:6,fontSize:10,background:u.expediente.modo==="OU"?"#fff7ed":"#eff6ff",color:u.expediente.modo==="OU"?"#c2410c":C.azulMedio,padding:"1px 6px",borderRadius:4,fontWeight:700}}>{u.expediente.modo==="OU"?"🔀 OU":"🔁 E"}</span>}
                   </div>
                   {(u.especialidades||[]).length>0&&<div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>{(u.especialidades||[]).map(e=><span key={e} style={{background:C.azulEscuro,color:C.ciano,padding:"1px 6px",borderRadius:3,fontSize:9,fontWeight:800}}>{e}</span>)}</div>}
               </div>
@@ -2180,11 +2316,14 @@ export default function App(){
   const sessaoAtiva=registros.find(r=>r.usuarioId===user?.id&&!r.horaFim);
 
   // ── Sessões ──
-  const iniciar = async (projetoId, hi, obs) => {
+  const iniciar = async (projetoId, hi, obs, categoriaAdmin=null) => {
     const nova = {
-      id: Date.now().toString(), usuarioId:user.id, projetoId,
+      id: Date.now().toString(), usuarioId:user.id,
+      projetoId: projetoId||null,
+      categoriaAdmin: categoriaAdmin||null,
       data: new Date().toISOString().slice(0,10),
-      horaInicio:hi, horaFim:null, duracaoMin:null, inicioTs:Date.now(), obs,
+      horaInicio:hi, horaFim:null, duracaoMin:null,
+      minutosExtras:0, inicioTs:Date.now(), obs,
     };
     setRegistros(x => [...x, nova]);
     setModalH(null);
@@ -2196,8 +2335,10 @@ export default function App(){
     setRegistros(x => x.map(r => {
       if(r.usuarioId===user.id && !r.horaFim){
         const dur = Math.max(0, horaMin(hf) - horaMin(r.horaInicio));
+        const u   = usuarios.find(u2=>u2.id===r.usuarioId);
+        const {minutosExtras} = verificarHoraExtra(r.horaInicio, hf, u?.expediente);
         sessaoId = r.id;
-        return {...r, horaFim:hf, duracaoMin:dur, obs:obs||r.obs};
+        return {...r, horaFim:hf, duracaoMin:dur, minutosExtras, obs:obs||r.obs};
       }
       return r;
     }));
@@ -2206,7 +2347,9 @@ export default function App(){
       const sessao = registros.find(r => r.id === sessaoId);
       if(sessao) {
         const dur = Math.max(0, horaMin(hf) - horaMin(sessao.horaInicio));
-        try { await db.sessoes.encerrar(sessaoId, hf, dur, obs||sessao.obs); }
+        const u   = usuarios.find(u2=>u2.id===sessao.usuarioId);
+        const {minutosExtras} = verificarHoraExtra(sessao.horaInicio, hf, u?.expediente);
+        try { await db.sessoes.encerrar(sessaoId, hf, dur, obs||sessao.obs, minutosExtras); }
         catch(e){ console.error("Erro encerrar sessao:", e); }
       }
     }

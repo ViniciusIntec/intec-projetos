@@ -77,10 +77,10 @@ export const db = {
       if (error) throw error;
       return toSessaoFront(data);
     },
-    async encerrar(id, horaFim, duracaoMin, obs) {
+    async encerrar(id, horaFim, duracaoMin, obs, minutosExtras=0) {
       const { data, error } = await supabase
         .from('sessoes_horas')
-        .update({ hora_fim: horaFim, duracao_min: duracaoMin, obs })
+        .update({ hora_fim: horaFim, duracao_min: duracaoMin, obs, minutos_extras: minutosExtras })
         .eq('id', id)
         .select()
         .single();
@@ -211,29 +211,33 @@ function toUsuarioBack(u) {
 
 function toSessaoFront(r) {
   return {
-    id:          r.id,
-    usuarioId:   r.usuario_id,
-    projetoId:   r.projeto_id,
-    data:        r.data,
-    horaInicio:  r.hora_inicio,
-    horaFim:     r.hora_fim,
-    duracaoMin:  r.duracao_min,
-    inicioTs:    r.inicio_ts,
-    obs:         r.obs || '',
+    id:             r.id,
+    usuarioId:      r.usuario_id,
+    projetoId:      r.projeto_id,
+    categoriaAdmin: r.categoria_admin || null,
+    data:           r.data,
+    horaInicio:     r.hora_inicio,
+    horaFim:        r.hora_fim,
+    duracaoMin:     r.duracao_min,
+    minutosExtras:  r.minutos_extras || 0,
+    inicioTs:       r.inicio_ts,
+    obs:            r.obs || '',
   };
 }
 
 function toSessaoBack(s) {
   return {
-    id:          s.id,
-    usuario_id:  s.usuarioId,
-    projeto_id:  s.projetoId || null,
-    data:        s.data,
-    hora_inicio: s.horaInicio,
-    hora_fim:    s.horaFim || null,
-    duracao_min: s.duracaoMin || null,
-    inicio_ts:   s.inicioTs,
-    obs:         s.obs || '',
+    id:               s.id,
+    usuario_id:       s.usuarioId,
+    projeto_id:       s.projetoId || null,
+    categoria_admin:  s.categoriaAdmin || null,
+    data:             s.data,
+    hora_inicio:      s.horaInicio,
+    hora_fim:         s.horaFim || null,
+    duracao_min:      s.duracaoMin || null,
+    minutos_extras:   s.minutosExtras || 0,
+    inicio_ts:        s.inicioTs,
+    obs:              s.obs || '',
   };
 }
 
