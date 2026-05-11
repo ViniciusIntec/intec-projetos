@@ -77,18 +77,21 @@ const horaMin    = h => { if(!h) return 0; const [hh,mm]=h.split(":").map(Number
 // Estrutura: { turno1:{inicio,fim}, turno2:{ativo,inicio,fim}, modo:"E"|"OU" }
 const calcHorasDia = (expediente) => {
   if (!expediente) return 7;
+  // Formato novo com turnos
   if (expediente.turno1) {
     const h1 = expediente.turno1.inicio && expediente.turno1.fim
       ? Math.max(0, (horaMin(expediente.turno1.fim) - horaMin(expediente.turno1.inicio)) / 60) : 0;
     const h2 = expediente.turno2?.ativo && expediente.turno2.inicio && expediente.turno2.fim
       ? Math.max(0, (horaMin(expediente.turno2.fim) - horaMin(expediente.turno2.inicio)) / 60) : 0;
-    // Modo OU: conta apenas o maior turno (referência de 1 turno por dia)
     if (expediente.turno2?.ativo && expediente.modo === "OU") return Math.max(h1, h2);
-    // Modo E (padrão): soma os dois turnos
     return Math.round((h1 + h2) * 10) / 10;
   }
+  // Formato legado {inicio, fim} — converte automaticamente
+  // Ex: {inicio:"09:00", fim:"18:00"} = considera intervalo de almoço de 2h → 7h
   if (expediente.inicio && expediente.fim) {
-    return Math.max(0, (horaMin(expediente.fim) - horaMin(expediente.inicio)) / 60);
+    const total = Math.max(0, (horaMin(expediente.fim) - horaMin(expediente.inicio)) / 60);
+    // Se total > 6h assume que tem intervalo de 1h de almoço (padrão CLT)
+    return total > 6 ? total - 1 : total;
   }
   return 7;
 };
@@ -761,22 +764,23 @@ function Produtividade({ registros, usuarios, projetos, usuarioAtual, calendario
   }, [usuarios, filtroUser, usuarioAtual, isGestor]);
 
   const dadosUsuario = useMemo(() => {
-    const hPrevH = getHoresPrev(filtroMes);
     return usuariosParaExibir.map(u => {
       const regs = registros.filter(r => {
         if (r.usuarioId !== u.id) return false;
         if (filtroMes !== 'todos' && !r.data?.startsWith(filtroMes)) return false;
         return true;
       });
-      const totalMin  = regs.reduce((a,r) => a + (r.duracaoMin||0), 0);
-      const totalH    = Math.floor(totalMin/60);
-      const totalM    = totalMin%60;
+      const totalMin    = regs.reduce((a,r) => a + (r.duracaoMin||0), 0);
+      const totalH      = Math.floor(totalMin/60);
+      const totalM      = totalMin%60;
       const projsUnicos = new Set(regs.map(r=>r.projetoId).filter(Boolean));
-      const hPrevMin  = hPrevH * 60;
-      const eficiencia = hPrevMin > 0 ? Math.min(100, Math.round((totalMin/hPrevMin)*100)) : 0;
-      const salario   = u.salario || 0;
-      const custoHora = totalMin > 0 && salario > 0 ? salario / (totalMin/60) : 0;
-      const porProjeto = {};
+      // hPrevH calculado individualmente por colaborador com base no expediente dele
+      const hPrevH      = getHoresPrev(filtroMes, u);
+      const hPrevMin    = hPrevH * 60;
+      const eficiencia  = hPrevMin > 0 ? Math.min(100, Math.round((totalMin/hPrevMin)*100)) : 0;
+      const salario     = u.salario || 0;
+      const custoHora   = totalMin > 0 && salario > 0 ? salario / (totalMin/60) : 0;
+      const porProjeto  = {};
       regs.forEach(r => {
         if (!r.projetoId) return;
         if (!porProjeto[r.projetoId]) porProjeto[r.projetoId] = { totalMin:0, sessoes:0 };
@@ -1337,7 +1341,7 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
                       </div>
                       <div style={{textAlign:"right"}}>
                         <div style={{fontSize:13,fontWeight:800,color:d.pct>=80?C.verde:d.pct>=50?C.amarelo:C.vermelho}}>{d.totalH}h {d.totalM}min</div>
-                        <div style={{fontSize:10,color:C.cinzaClaro}}>de {Math.round(calendario.diasUteisNoMes(ano,mes)*d.hdDia)}h ({d.pct}%)</div>
+                        <div style={{fontSize:10,color:C.cinzaClaro}}>de {Math.round(calendario.diasUteisNoMes(ano,mes)*calcHorasDia(d.usuario.expediente))}h ({d.pct}%)</div>
                       </div>
                     </div>
                     <div style={{background:C.cinzaCard,borderRadius:4,height:6}}>
