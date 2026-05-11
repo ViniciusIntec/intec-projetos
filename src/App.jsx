@@ -36,31 +36,31 @@ const TIPOS = {
 const USUARIOS_PADRAO = [
   { id:"vinicius", nome:"Vinicius", email:"intecestruturas4@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#2563a8", iniciais:"VI", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     salario:0, especialidades:["PE","PR","LT","PF"] },
   { id:"leonardo", nome:"Leonardo", email:"intecestruturas2@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#0891b2", iniciais:"LE", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     especialidades:["PE","PR","LT","PF"] },
   { id:"claudio", nome:"Claudio", email:"intecestruturas3@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#059669", iniciais:"CL", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     especialidades:["PE","PR","LT","PF"] },
   { id:"heriston", nome:"Heriston", email:"direcao@engenhariaintec.com.br", senha:"1234",
     perfil:"gestor", cor:"#7c3aed", iniciais:"HE", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     especialidades:["PE","PR","LT","PF","CT"] },
   { id:"gustavo", nome:"Gustavo", email:"intecestruturas5@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#f59e0b", iniciais:"GU", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     especialidades:["PE","PR","LT","PF"] },
   { id:"jonathan", nome:"Jonathan", email:"intecobras2@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#dc2626", iniciais:"JO", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     especialidades:["EL","PH"] },
   { id:"pablo", nome:"Pablo", email:"inteccompplementares1@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#db2777", iniciais:"PA", ativo:true,
-    expediente:{ inicio:"08:00", fim:"18:00" },
+    expediente:{ turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true,inicio:"14:00",fim:"18:00"} },
     especialidades:["EL","PH"] },
 ];
 
@@ -71,6 +71,47 @@ const fmtDuracao = mins => { if(!mins||mins<0) return "0h 0min"; return `${Math.
 const diasAte    = data => { if(!data) return null; return Math.ceil((new Date(data)-new Date())/86400000); };
 const statusN    = s => { if(!s) return "Novo/Definir"; if(s==="Concluído"||s==="CONCLUÍDO") return "CONCLUÍDO"; return s; };
 const horaMin    = h => { if(!h) return 0; const [hh,mm]=h.split(":").map(Number); return hh*60+mm; };
+
+// Calcula horas diárias de trabalho baseado no expediente do usuário
+// Suporta 1 ou 2 turnos: { turno1: {inicio, fim}, turno2: {ativo, inicio, fim} }
+const calcHorasDia = (expediente) => {
+  if (!expediente) return 7; // fallback padrão
+  // Formato novo com turnos
+  if (expediente.turno1) {
+    const t1 = expediente.turno1;
+    const h1 = t1.inicio && t1.fim ? Math.max(0, (horaMin(t1.fim) - horaMin(t1.inicio)) / 60) : 0;
+    let h2 = 0;
+    if (expediente.turno2?.ativo && expediente.turno2.inicio && expediente.turno2.fim) {
+      h2 = Math.max(0, (horaMin(expediente.turno2.fim) - horaMin(expediente.turno2.inicio)) / 60);
+    }
+    return Math.round((h1 + h2) * 10) / 10;
+  }
+  // Formato antigo (inicio/fim simples) — converte na hora
+  if (expediente.inicio && expediente.fim) {
+    return Math.max(0, (horaMin(expediente.fim) - horaMin(expediente.inicio)) / 60);
+  }
+  return 7;
+};
+
+// Retorna hora de fim do último turno (para auto-encerramento)
+const fimExpediente = (expediente) => {
+  if (!expediente) return "18:00";
+  if (expediente.turno2?.ativo && expediente.turno2.fim) return expediente.turno2.fim;
+  if (expediente.turno1?.fim) return expediente.turno1.fim;
+  if (expediente.fim) return expediente.fim;
+  return "18:00";
+};
+
+// Formata expediente para exibição
+const labelExpediente = (expediente) => {
+  if (!expediente) return "—";
+  if (expediente.turno1) {
+    const t1 = `${expediente.turno1.inicio}–${expediente.turno1.fim}`;
+    if (expediente.turno2?.ativo) return `${t1} e ${expediente.turno2.inicio}–${expediente.turno2.fim}`;
+    return t1;
+  }
+  return `${expediente.inicio||"?"}–${expediente.fim||"?"}`;
+};
 const salvar     = (k,v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch{} };
 const carregar   = (k,d) => { try { const s=localStorage.getItem(k); return s?JSON.parse(s):d; } catch { return d; } };
 
@@ -609,13 +650,14 @@ function Produtividade({ registros, usuarios, projetos, usuarioAtual, calendario
   };
 
   // Horas previstas usando calendario real ou fallback seguro
-  const getHoresPrev = useCallback((ym) => {
+  const getHoresPrev = useCallback((ym, usuario) => {
     try {
-      if (!ym || ym === 'todos') return 154; // fallback 22d x 7h
+      const hdDia = usuario?.expediente ? calcHorasDia(usuario.expediente) : 7;
+      if (!ym || ym === 'todos') return Math.round(22 * hdDia);
       const [ano, mes] = ym.split('-').map(Number);
       if (calendario && typeof calendario.horasPrevistasMes === 'function') {
-        const h = calendario.horasPrevistasMes(ano, mes);
-        return h > 0 ? h : 154;
+        const h = calendario.horasPrevistasMes(ano, mes, hdDia);
+        return h > 0 ? h : Math.round(22 * hdDia);
       }
     } catch(e) {}
     return 154;
@@ -833,11 +875,9 @@ function useCalendario() {
   const [erro,        setErro]        = useState(null);
   const [anoAtual,    setAnoAtual]    = useState(new Date().getFullYear());
 
-  const HORA_INICIO_MANHA  = 9;
-  const HORA_FIM_MANHA     = 12;
-  const HORA_INICIO_TARDE  = 14;
-  const HORA_FIM_TARDE     = 18;
-  const HORAS_DIA          = (HORA_FIM_MANHA - HORA_INICIO_MANHA) + (HORA_FIM_TARDE - HORA_INICIO_TARDE); // 7h
+  // HORAS_DIA padrão do escritório (usado no calendário geral)
+  // Cada colaborador tem suas próprias horas calculadas via calcHorasDia(expediente)
+  const HORAS_DIA = 7; // padrão referência (9-12 + 14-18)
 
   const buscarFeriados = async (ano) => {
     setCarregando(true);
@@ -905,7 +945,7 @@ function useCalendario() {
     return count;
   };
 
-  const horasPrevistasMes = (ano, mes) => diasUteisNoMes(ano, mes) * HORAS_DIA;
+  const horasPrevistasMes = (ano, mes, horasDia=HORAS_DIA) => diasUteisNoMes(ano, mes) * horasDia;
 
   // Lista feriados de um mes
   const feriadosDoMes = (ano, mes) => {
@@ -1053,13 +1093,15 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
         r.data?.startsWith(`${ano}-${String(mes).padStart(2,"0")}`) &&
         r.duracaoMin
       );
-      const totalMin = regs.reduce((a,r) => a + r.duracaoMin, 0);
-      const totalH = Math.floor(totalMin / 60);
-      const totalM = totalMin % 60;
-      const pct = horasPrevistas > 0 ? Math.min(100, Math.round((totalMin / (horasPrevistas * 60)) * 100)) : 0;
-      return { usuario:u, totalMin, totalH, totalM, pct };
+      const totalMin    = regs.reduce((a,r) => a + r.duracaoMin, 0);
+      const totalH      = Math.floor(totalMin / 60);
+      const totalM      = totalMin % 60;
+      const hdDia       = calcHorasDia(u.expediente);
+      const hPrevUsuario= calendario.diasUteisNoMes(ano, mes) * hdDia * 60;
+      const pct         = hPrevUsuario > 0 ? Math.min(100, Math.round((totalMin / hPrevUsuario) * 100)) : 0;
+      return { usuario:u, totalMin, totalH, totalM, pct, hdDia };
     });
-  }, [usuarios, registros, ano, mes, horasPrevistas]);
+  }, [usuarios, registros, ano, mes]);
 
   const semanas = ["Dom","Seg","Ter","Qua","Qui","Sex","Sab"];
   const hoje_iso = new Date().toISOString().slice(0,10);
@@ -1204,7 +1246,7 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
                       </div>
                       <div style={{textAlign:"right"}}>
                         <div style={{fontSize:13,fontWeight:800,color:d.pct>=80?C.verde:d.pct>=50?C.amarelo:C.vermelho}}>{d.totalH}h {d.totalM}min</div>
-                        <div style={{fontSize:10,color:C.cinzaClaro}}>de {horasPrevistas}h ({d.pct}%)</div>
+                        <div style={{fontSize:10,color:C.cinzaClaro}}>de {Math.round(calendario.diasUteisNoMes(ano,mes)*d.hdDia)}h ({d.pct}%)</div>
                       </div>
                     </div>
                     <div style={{background:C.cinzaCard,borderRadius:4,height:6}}>
@@ -1458,7 +1500,7 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
   const [lista,setLista]=useState(usuarios);
   const [editId,setEditId]=useState(null);
   const [showForm,setShowForm]=useState(false);
-  const VAZIO={id:"",nome:"",email:"",senha:"",salario:0,perfil:"colaborador",cor:"#2563a8",iniciais:"",ativo:true,expediente:{inicio:"08:00",fim:"18:00"},especialidades:[]};
+  const VAZIO={id:"",nome:"",email:"",senha:"",salario:0,perfil:"colaborador",cor:"#2563a8",iniciais:"",ativo:true,expediente:{turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:true,inicio:"14:00",fim:"18:00"}},especialidades:[]};
   const [form,setForm]=useState(VAZIO);
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
   const se=(k,v)=>setForm(f=>({...f,expediente:{...f.expediente,[k]:v}}));
@@ -1491,12 +1533,18 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Início do Expediente</div>
-              <div style={{fontSize:20,fontWeight:800,color:C.azulMedio}}>{eu.expediente?.inicio||"09:00"}</div>
+              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Turno 1</div>
+              <div style={{fontSize:18,fontWeight:800,color:C.azulMedio}}>{eu.expediente?.turno1?.inicio||eu.expediente?.inicio||"09:00"} – {eu.expediente?.turno1?.fim||eu.expediente?.fim||"12:00"}</div>
             </div>
             <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
-              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Fim do Expediente</div>
-              <div style={{fontSize:20,fontWeight:800,color:C.azulMedio}}>{eu.expediente?.fim||"18:00"}</div>
+              <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>{eu.expediente?.turno2?.ativo?"Turno 2":"Horário"}</div>
+              <div style={{fontSize:18,fontWeight:800,color:C.azulMedio}}>
+                {eu.expediente?.turno2?.ativo?`${eu.expediente.turno2.inicio} – ${eu.expediente.turno2.fim}`:"Somente manhã"}
+              </div>
+            </div>
+            <div style={{padding:"12px 16px",background:C.azulEscuro,borderRadius:10}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.ciano,marginBottom:4}}>Total por Dia</div>
+              <div style={{fontSize:22,fontWeight:800,color:C.branco}}>{calcHorasDia(eu.expediente)}h</div>
             </div>
             <div style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10,gridColumn:"1/-1"}}>
               <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:4}}>Especialidades</div>
@@ -1544,8 +1592,46 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
               <Inp label="Senha *" value={form.senha} onChange={v=>sf("senha",v)} type="password"/>
               <Inp label="Salario Mensal (R$)" value={form.salario||""} onChange={v=>sf("salario",parseFloat(v)||0)} type="number" placeholder="Ex: 3500"/>
               <Sel label="Perfil" value={form.perfil} onChange={v=>sf("perfil",v)} options={[{value:"colaborador",label:"👤 Colaborador"},{value:"gestor",label:"🔑 Gestor"},{value:"admin",label:"👑 Admin"}]}/>
-              <Inp label="Início expediente" value={form.expediente.inicio} onChange={v=>se("inicio",v)} type="time"/>
-              <Inp label="Fim expediente" value={form.expediente.fim} onChange={v=>se("fim",v)} type="time"/>
+              {/* Turno 1 */}
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:8}}>
+                  Turno 1 (obrigatório)
+                  <span style={{fontSize:11,color:C.cinzaClaro,fontWeight:400,marginLeft:8}}>
+                    {form.expediente?.turno1?.inicio&&form.expediente?.turno1?.fim
+                      ? `${Math.max(0,(horaMin(form.expediente.turno1.fim)-horaMin(form.expediente.turno1.inicio))/60).toFixed(1)}h`
+                      : ""}
+                  </span>
+                </label>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <Inp label="Entrada" value={form.expediente?.turno1?.inicio||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno1:{...f.expediente?.turno1,inicio:v}}}))} type="time"/>
+                  <Inp label="Saída" value={form.expediente?.turno1?.fim||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno1:{...f.expediente?.turno1,fim:v}}}))} type="time"/>
+                </div>
+              </div>
+              {/* Turno 2 */}
+              <div style={{gridColumn:"1/-1"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"8px 12px",background:form.expediente?.turno2?.ativo?"#f0fdf4":"#f8fafc",borderRadius:8,border:`1px solid ${form.expediente?.turno2?.ativo?"#86efac":C.cinzaCard}`}}>
+                  <input type="checkbox" checked={!!form.expediente?.turno2?.ativo}
+                    onChange={e=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,ativo:e.target.checked}}}))}
+                    id="t2ativo" style={{cursor:"pointer",width:15,height:15}}/>
+                  <label htmlFor="t2ativo" style={{fontSize:13,fontWeight:600,cursor:"pointer",color:form.expediente?.turno2?.ativo?"#166534":C.cinzaClaro}}>
+                    {form.expediente?.turno2?.ativo?"✓ Turno 2 ativo":"Adicionar Turno 2 (tarde)"}
+                    {form.expediente?.turno2?.ativo&&form.expediente?.turno2?.inicio&&form.expediente?.turno2?.fim
+                      ? <span style={{fontWeight:400,marginLeft:8,fontSize:11}}>{Math.max(0,(horaMin(form.expediente.turno2.fim)-horaMin(form.expediente.turno2.inicio))/60).toFixed(1)}h</span>
+                      : ""}
+                  </label>
+                  {form.expediente?.turno1&&form.expediente?.turno2?.ativo&&(
+                    <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:C.azulMedio}}>
+                      Total: {calcHorasDia(form.expediente)}h/dia
+                    </span>
+                  )}
+                </div>
+                {form.expediente?.turno2?.ativo&&(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <Inp label="Entrada tarde" value={form.expediente?.turno2?.inicio||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,inicio:v}}}))} type="time"/>
+                    <Inp label="Saída tarde" value={form.expediente?.turno2?.fim||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,fim:v}}}))} type="time"/>
+                  </div>
+                )}
+              </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:6}}>Cor do avatar</label>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1576,7 +1662,7 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,color:C.cinzaEscuro}}>{u.nome}</div>
                 <div style={{fontSize:11,color:C.cinzaClaro,marginTop:2}}>
-                    {u.email} • {u.perfil==="admin"?"👑 Admin":u.perfil==="gestor"?"🔑 Gestor":"👤 Colaborador"} • ⏰ {u.expediente?.inicio}–{u.expediente?.fim}
+                    {u.email} • {u.perfil==="admin"?"👑 Admin":u.perfil==="gestor"?"🔑 Gestor":"👤 Colaborador"} • ⏰ {labelExpediente(u.expediente)} ({calcHorasDia(u.expediente)}h/dia)
                   </div>
                   {(u.especialidades||[]).length>0&&<div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>{(u.especialidades||[]).map(e=><span key={e} style={{background:C.azulEscuro,color:C.ciano,padding:"1px 6px",borderRadius:3,fontSize:9,fontWeight:800}}>{e}</span>)}</div>}
               </div>
@@ -2078,7 +2164,7 @@ export default function App(){
     if(!user) return;
     expRef.current=setInterval(()=>{
       const agora=new Date().toTimeString().slice(0,5);
-      const fim=user.expediente?.fim;
+      const fim=fimExpediente(user.expediente);
       if(!fim||agora<fim) return;
       const aberta=registros.find(r=>r.usuarioId===user.id&&!r.horaFim);
       if(!aberta) return;
