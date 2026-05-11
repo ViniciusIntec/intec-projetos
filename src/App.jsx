@@ -1118,7 +1118,9 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
     return count;
   }, [ano, mes, feriadosEfetivos]);
 
-  const horasPrevistas = diasUteis * calendario.HORAS_DIA;
+  // Horas previstas do usuário logado (não fixo)
+  const hdDiaUsuario    = calcHorasDia(usuarioAtual?.expediente);
+  const horasPrevistas  = diasUteis * hdDiaUsuario;
   const diasNoMes      = new Date(ano, mes, 0).getDate();
   const primeiroDia    = new Date(ano, mes - 1, 1).getDay();
 
@@ -1216,7 +1218,7 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
           <div style={{flex:1}}>
             <h2 style={{color:C.azulEscuro,margin:0,fontSize:16,fontWeight:700}}>📅 Calendario de Dias Uteis</h2>
             <p style={{color:C.cinzaClaro,fontSize:12,margin:"4px 0 0"}}>
-              Feriados nacionais + MG + Gov. Valadares • Expediente: 9h–12h e 14h–18h ({calendario.HORAS_DIA}h/dia)
+              Feriados nacionais + MG + Gov. Valadares • Expediente: {labelExpediente(usuarioAtual?.expediente)} ({hdDiaUsuario}h/dia)
             </p>
           </div>
           <select value={mes} onChange={e=>setMes(Number(e.target.value))} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
@@ -1256,10 +1258,10 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14}}>
           {[
             {label:"Dias Uteis",   valor:diasUteis - recessosMes.length, cor:C.azulMedio, icone:"📆", sub:`de ${diasNoMes} dias`},
-            {label:"Horas Previstas", valor:`${horasPrevistas - recessosMes.length * calendario.HORAS_DIA}h`, cor:C.azulClaro, icone:"⏱", sub:`${calendario.HORAS_DIA}h × ${diasUteis - recessosMes.length} dias`},
+            {label:"Horas Previstas", valor:`${horasPrevistas - recessosMes.length * hdDiaUsuario}h`, cor:C.azulClaro, icone:"⏱", sub:`${hdDiaUsuario}h × ${diasUteis - recessosMes.length} dias`},
             {label:"Feriados",    valor:feriadosMes.length,    cor:C.laranja, icone:"🎉", sub:"no mes"},
             {label:"Recessos",    valor:recessosMes.length,    cor:C.amarelo, icone:"🏖", sub:"cadastrados"},
-            {label:"Expediente",  valor:"7h/dia",              cor:C.verde,   icone:"🏢", sub:"9–12h e 14–18h"},
+            {label:"Expediente",  valor:`${hdDiaUsuario}h/dia`, cor:C.verde,  icone:"🏢", sub:labelExpediente(usuarioAtual?.expediente)},
           ].map(k=>(
             <Card key={k.label} style={{textAlign:"center",borderTop:`3px solid ${k.cor}`,padding:14}}>
               <div style={{fontSize:22}}>{k.icone}</div>
@@ -1341,7 +1343,7 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
                       </div>
                       <div style={{textAlign:"right"}}>
                         <div style={{fontSize:13,fontWeight:800,color:d.pct>=80?C.verde:d.pct>=50?C.amarelo:C.vermelho}}>{d.totalH}h {d.totalM}min</div>
-                        <div style={{fontSize:10,color:C.cinzaClaro}}>de {Math.round(calendario.diasUteisNoMes(ano,mes)*calcHorasDia(d.usuario.expediente))}h ({d.pct}%)</div>
+                        <div style={{fontSize:10,color:C.cinzaClaro}}>de {Math.round(calendario.diasUteisNoMes(ano,mes)*calcHorasDia(d.usuario.expediente))}h • {calcHorasDia(d.usuario.expediente)}h/dia ({d.pct}%)</div>
                       </div>
                     </div>
                     <div style={{background:C.cinzaCard,borderRadius:4,height:6}}>
