@@ -236,3 +236,21 @@ function toSessaoBack(s) {
     obs:         s.obs || '',
   };
 }
+
+// ─── REALTIME ──────────────────────────────────────────────────────────────────
+// Escuta mudanças em tempo real nas tabelas e chama os callbacks
+export function iniciarRealtime({ onProjetosChange, onSessoesChange }) {
+  const canal = supabase
+    .channel('intec-realtime')
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'projetos' },
+      (payload) => { if(onProjetosChange) onProjetosChange(payload); }
+    )
+    .on('postgres_changes',
+      { event: '*', schema: 'public', table: 'sessoes_horas' },
+      (payload) => { if(onSessoesChange) onSessoesChange(payload); }
+    )
+    .subscribe();
+
+  return () => supabase.removeChannel(canal); // retorna função de cleanup
+}

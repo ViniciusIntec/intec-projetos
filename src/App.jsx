@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { db } from "./supabase.js";
+import { db, iniciarRealtime } from "./supabase.js";
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = "26616128245-j4kghm435os4m3vu42tq32ikkjmbvrp6.apps.googleusercontent.com";
@@ -242,7 +242,13 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
   // Filtra por ano e ordena alfabeticamente pelo cliente
   const ativosFiltrados = useMemo(()=>{
     const lista = filtroAno==="todos" ? ativos : ativos.filter(p=>Number(p.ano)===Number(filtroAno));
-    return [...lista].sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||"","pt-BR"));
+    return [...lista].sort((a,b)=>{
+      // Ordenação numérica: extrai o número do início do código (ex: "05" de "05.PE.0125")
+      const na = parseInt((a.codigo||"").split(".")[0]) || 0;
+      const nb = parseInt((b.codigo||"").split(".")[0]) || 0;
+      if(na !== nb) return na - nb;
+      return (a.codigo||"").localeCompare(b.codigo||"","pt-BR");
+    });
   },[ativos, filtroAno]);
 
   const opts=[{value:"",label:"Selecione o projeto..."},...ativosFiltrados.map(p=>({value:p.id,label:`${p.codigo} — ${p.cliente.substring(0,50)}`}))];
@@ -1814,7 +1820,12 @@ export default function App(){
   const [usuarios,  setUsuarios]  = useState(USUARIOS_PADRAO);
   const [registros, setRegistros] = useState([]);
   const [carregando,setCarregando]= useState(true);
-  const [user,      setUser]      = useState(null);
+  const [user, setUser] = useState(()=>{
+    try {
+      const s = localStorage.getItem("intec_user_logado");
+      return s ? JSON.parse(s) : null;
+    } catch { return null; }
+  });
   const [aba,       setAba]       = useState("dashboard");
   const [modal,     setModal]     = useState(null);
   const [modalH,    setModalH]    = useState(null);
@@ -1833,7 +1844,18 @@ export default function App(){
         ]);
         const vistos = new Set();
         setProjetos(p.filter(x => { if(vistos.has(x.id)) return false; vistos.add(x.id); return true; }));
-        setUsuarios(u.length > 0 ? u : USUARIOS_PADRAO);
+        const listaUsuarios = u.length > 0 ? u : USUARIOS_PADRAO;
+        setUsuarios(listaUsuarios);
+        // Atualiza dados do usuário logado se já estiver logado
+        setUser(current => {
+          if(!current) return current;
+          const atualizado = listaUsuarios.find(x=>x.id===current.id);
+          if(atualizado) {
+            localStorage.setItem("intec_user_logado", JSON.stringify(atualizado));
+            return atualizado;
+          }
+          return current;
+        });
         setRegistros(s);
       } catch(e) {
         console.error("Erro ao carregar Supabase:", e);
@@ -1849,6 +1871,32 @@ export default function App(){
       }
     }
     carregarTudo();
+  }, []);
+
+  // ── Realtime: atualiza dados automaticamente quando outro usuário faz mudanças ──
+  useEffect(() => {
+    const cleanup = iniciarRealtime({
+      onProjetosChange: async (payload) => {
+        // Recarrega lista completa de projetos
+        try {
+          const p = await db.projetos.listar();
+          const vistos = new Set();
+          setProjetos(p.filter(x => { if(vistos.has(x.id)) return false; vistos.add(x.id); return true; }));
+        } catch(e) { console.error("Realtime projetos:", e); }
+      },
+      onSessoesChange: async (payload) => {
+        // Atualiza só a sessão modificada para não recarregar tudo
+        try {
+          if(payload.eventType === "DELETE") {
+            setRegistros(r => r.filter(x => x.id !== payload.old?.id));
+          } else {
+            const s = await db.sessoes.listar();
+            setRegistros(s);
+          }
+        } catch(e) { console.error("Realtime sessoes:", e); }
+      },
+    });
+    return cleanup; // cleanup ao desmontar
   }, []);
 
   // Timer verificação de atividade (1h)
@@ -1972,7 +2020,19 @@ export default function App(){
     </div>
   );
 
-  if(!user) return <TelaLogin usuarios={usuarios} onLogin={u=>{setUser(u);setTimeout(()=>setModalH("checkin"),600);}}/>;
+  const fazerLogin = (u) => {
+    // Busca o usuário atualizado da lista (pode ter salário/expediente atualizado)
+    const uAtualizado = usuarios.find(x=>x.id===u.id) || u;
+    setUser(uAtualizado);
+    localStorage.setItem("intec_user_logado", JSON.stringify(uAtualizado));
+    setTimeout(()=>setModalH("checkin"),600);
+  };
+  const fazerLogout = () => {
+    localStorage.removeItem("intec_user_logado");
+    setUser(null);
+  };
+
+  if(!user) return <TelaLogin usuarios={usuarios} onLogin={fazerLogin}/>;
 
   const abas=[
     {id:"dashboard",    label:"Dashboard",       icone:"📊"},
@@ -1999,7 +2059,7 @@ export default function App(){
             {sessaoAtiva&&<div style={{background:"rgba(34,197,94,0.2)",border:"1px solid rgba(34,197,94,0.4)",borderRadius:8,padding:"4px 10px",fontSize:11,color:C.verde,fontWeight:700}}>▶ Em sessão</div>}
             {!sessaoAtiva&&<Btn onClick={()=>setModalH("checkin")} variant="ciano" small>▶ Iniciar Sessão</Btn>}
             {sessaoAtiva&&<Btn onClick={()=>setModalH("encerramento")} small style={{background:"rgba(239,68,68,0.15)",color:"#fca5a5",border:"1px solid rgba(239,68,68,0.3)"}}>⏹ Encerrar</Btn>}
-            <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",transition:"all 0.2s"}} onClick={()=>{if(window.confirm("Sair do sistema?"))setUser(null);}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",transition:"all 0.2s"}} onClick={()=>{if(window.confirm("Sair do sistema?"))fazerLogout();}}>
               <Avatar u={user} size={28}/>
               <div style={{color:C.branco}}><div style={{fontSize:12,fontWeight:700}}>{user.nome.split(" ")[0]}</div><div style={{fontSize:10,color:C.ciano}}>{user.perfil==="admin"?"Admin":user.perfil==="gestor"?"Gestor":"Colaborador"}</div></div>
             </div>
