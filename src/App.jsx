@@ -229,12 +229,23 @@ function TelaLogin({usuarios,onLogin}){
 
 // ─── MODAL CHECK-IN / AVISO ────────────────────────────────────────────────────
 function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar,onMudar,onFechar}){
-  const [projSel,setProjSel]=useState(sessaoAtiva?.projetoId||"");
-  const [hi,setHi]=useState(new Date().toTimeString().slice(0,5));
-  const [hf,setHf]=useState(new Date().toTimeString().slice(0,5));
-  const [obs,setObs]=useState("");
-  const ativos=projetos.filter(p=>!["CONCLUÍDO","Concluído"].includes(statusN(p.status)));
-  const opts=[{value:"",label:"Selecione o projeto..."},...ativos.map(p=>({value:p.id,label:`${p.codigo} — ${p.cliente.substring(0,50)}`}))];
+  const [projSel,setProjSel] = useState(sessaoAtiva?.projetoId||"");
+  const [hi,setHi]           = useState(new Date().toTimeString().slice(0,5));
+  const [hf,setHf]           = useState(new Date().toTimeString().slice(0,5));
+  const [obs,setObs]         = useState("");
+  const [filtroAno,setFAno]  = useState("todos");
+
+  // Anos disponíveis nos projetos ativos
+  const ativos = projetos.filter(p=>!["CONCLUÍDO","Concluído"].includes(statusN(p.status)));
+  const anos   = useMemo(()=>[...new Set(ativos.map(p=>p.ano))].filter(Boolean).sort((a,b)=>b-a), [ativos]);
+
+  // Filtra por ano e ordena alfabeticamente pelo cliente
+  const ativosFiltrados = useMemo(()=>{
+    const lista = filtroAno==="todos" ? ativos : ativos.filter(p=>Number(p.ano)===Number(filtroAno));
+    return [...lista].sort((a,b)=>(a.cliente||"").localeCompare(b.cliente||"","pt-BR"));
+  },[ativos, filtroAno]);
+
+  const opts=[{value:"",label:"Selecione o projeto..."},...ativosFiltrados.map(p=>({value:p.id,label:`${p.codigo} — ${p.cliente.substring(0,50)}`}))];
 
   const wrap=(children,titulo,sub,gradFrom,gradTo)=>(
     <div style={{position:"fixed",inset:0,background:"rgba(15,25,50,0.8)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -249,7 +260,19 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
   );
 
   if(tipo==="checkin") return wrap(<>
-    <Sel label="Projeto *" value={projSel} onChange={setProjSel} options={opts}/>
+    {/* Filtro por ano */}
+    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+      <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,whiteSpace:"nowrap"}}>Filtrar por ano:</label>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {["todos",...anos].map(a=>(
+          <button key={a} onClick={()=>{setFAno(a);setProjSel("");}}
+            style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${filtroAno==a?C.azulMedio:C.cinzaCard}`,background:filtroAno==a?C.azulMedio:"transparent",color:filtroAno==a?C.branco:C.cinzaClaro,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+            {a==="todos"?"Todos":a}
+          </button>
+        ))}
+      </div>
+    </div>
+    <Sel label={`Projeto * (${ativosFiltrados.length} disponíveis)`} value={projSel} onChange={setProjSel} options={opts}/>
     <Inp label="Hora de início" type="time" value={hi} onChange={setHi}/>
     <Inp label="Observação (opcional)" value={obs} onChange={setObs} placeholder="Ex: Modelagem no Eberick..."/>
     <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
@@ -265,6 +288,15 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
       <div style={{color:C.cinzaClaro,fontSize:11,marginTop:2}}>Iniciado às {sessaoAtiva.horaInicio}</div>
     </div>}
     <Btn onClick={()=>onFechar("continuar")} style={{justifyContent:"center"}}>✅ Sim, ainda estou trabalhando</Btn>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Ano:</label>
+      {["todos",...anos].map(a=>(
+        <button key={a} onClick={()=>{setFAno(a);setProjSel("");}}
+          style={{padding:"3px 10px",borderRadius:20,border:`1.5px solid ${filtroAno==a?C.azulMedio:C.cinzaCard}`,background:filtroAno==a?C.azulMedio:"transparent",color:filtroAno==a?C.branco:C.cinzaClaro,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+          {a==="todos"?"Todos":a}
+        </button>
+      ))}
+    </div>
     <Sel label="Mudei de projeto:" value={projSel} onChange={setProjSel} options={opts}/>
     {projSel&&projSel!==sessaoAtiva?.projetoId&&<Btn variant="secondary" onClick={()=>onMudar(projSel)} style={{justifyContent:"center"}}>🔄 Mudar para este projeto</Btn>}
     <Btn variant="danger" onClick={()=>onFechar("encerrar")} style={{justifyContent:"center"}}>⏹ Parei de trabalhar</Btn>
