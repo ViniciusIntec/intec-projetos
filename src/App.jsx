@@ -5,7 +5,7 @@ import { db, iniciarRealtime } from "./supabase.js";
 const GOOGLE_CLIENT_ID = "26616128245-j4kghm435os4m3vu42tq32ikkjmbvrp6.apps.googleusercontent.com";
 const DRIVE_ROOT_ID    = "0AIRz2lul3P76Uk9PVA";
 const SCOPES           = "https://www.googleapis.com/auth/drive.readonly";
-const CHECK_INTERVAL   = 60 * 60 * 1000; // 1h
+const CHECK_INTERVAL   = 30 * 60 * 1000; // 30min
 
 // ─── CORES INTEC ───────────────────────────────────────────────────────────────
 const C = {
@@ -448,7 +448,7 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     <Sel label="" value={projSel} onChange={setProjSel} options={opts}/>
     {projSel&&projSel!==sessaoAtiva?.projetoId&&<Btn variant="secondary" onClick={()=>onMudar(projSel)} style={{justifyContent:"center"}}>🔄 Mudar para este projeto</Btn>}
     <Btn variant="danger" onClick={()=>onFechar("encerrar")} style={{justifyContent:"center"}}>⏹ Parei de trabalhar</Btn>
-  </>, "⏰ Verificação de Atividade", "Já faz 1 hora — você ainda está trabalhando?", C.amarelo, C.laranja);
+  </>, "⏰ Verificação de Atividade", "Já faz 30 minutos — você ainda está trabalhando?", C.amarelo, C.laranja);
 
   if(tipo==="encerramento") {
     const horaMaxima = new Date().toTimeString().slice(0,5);
@@ -1666,7 +1666,12 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
         <Card>
           <h2 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:16,fontWeight:700}}>⚙ Informações do Sistema</h2>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            {[{label:"Verificação de atividade",valor:"A cada 1 hora",sub:"Aviso automático durante sessão"},{label:"Expediente",valor:"9h–12h e 14h–18h",sub:"7 horas por dia útil"},{label:"Encerramento automático",valor:"5 min após fim do expediente",sub:"Se sessão ainda estiver aberta"},{label:"Versão",valor:"INTEC v2.0",sub:"Com Supabase + Realtime"}].map(i=>(
+            {[
+              {label:"Verificação de atividade", valor:"A cada 30 minutos",    sub:"Aviso automático de inatividade"},
+              {label:"Expediente",               valor:labelExpediente(eu.expediente), sub:`${calcHorasDia(eu.expediente)}h por dia útil`},
+              {label:"Encerramento automático",  valor:"5 min após expediente", sub:"Se sessão ainda estiver aberta"},
+              {label:"Versão",                   valor:"INTEC v2.0",            sub:"Com Supabase + Realtime"},
+            ].map(i=>(
               <div key={i.label} style={{padding:"12px 16px",background:C.cinzaFundo,borderRadius:10}}>
                 <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:2}}>{i.label}</div>
                 <div style={{fontSize:13,fontWeight:700,color:C.azulMedio}}>{i.valor}</div>
@@ -1821,10 +1826,10 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
         <h2 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:16,fontWeight:700}}>⚙ Informações do Sistema</h2>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {[
-            {label:"Verificação de atividade",valor:"A cada 1 hora",sub:"Aviso automático durante sessão"},
-            {label:"Drive raiz",valor:"ENGENHARIA INTEGRADA",sub:`ID: ${DRIVE_ROOT_ID.substring(0,18)}...`},
-            {label:"Encerramento automático",valor:"5 min após fim do expediente",sub:"Se sessão ainda estiver aberta"},
-            {label:"Armazenamento",valor:"localStorage (navegador)",sub:"Dados salvos localmente"},
+            {label:"Verificação de atividade", valor:"A cada 30 minutos",        sub:"Aviso automático de inatividade"},
+            {label:"Drive raiz",               valor:"ENGENHARIA INTEGRADA",     sub:`ID: ${DRIVE_ROOT_ID.substring(0,18)}...`},
+            {label:"Encerramento automático",  valor:"5 min após fim do expediente", sub:"Se sessão ainda estiver aberta"},
+            {label:"Banco de dados",           valor:"Supabase (PostgreSQL)",    sub:"Dados sincronizados em tempo real"},
           ].map(i=>(
             <div key={i.label} style={{padding:"14px 16px",background:C.cinzaFundo,borderRadius:10}}>
               <div style={{fontSize:11,fontWeight:700,color:C.cinzaEscuro,marginBottom:2}}>{i.label}</div>
@@ -2222,8 +2227,13 @@ export default function App(){
   const [modal,     setModal]     = useState(null);
   const [modalH,    setModalH]    = useState(null);
   const drive    = useGoogleDrive();
-  const timerRef = useRef(null);
-  const expRef   = useRef(null);
+  const timerRef      = useRef(null);
+  const expRef        = useRef(null);
+  const registrosRef  = useRef([]);   // sempre tem o valor mais atual de registros
+  const encerrarRef   = useRef(null); // sempre tem a função encerrar mais atual
+
+  // Manter refs sempre atualizados (evita stale closure nos timers)
+  useEffect(() => { registrosRef.current = registros; }, [registros]);
 
   // ── Carregar dados do Supabase ao iniciar ──
   useEffect(() => {
@@ -2291,33 +2301,47 @@ export default function App(){
     return cleanup; // cleanup ao desmontar
   }, []);
 
-  // Timer verificação de atividade (1h)
+  // Timer verificação de atividade (30min) — usa ref para evitar stale closure
   useEffect(()=>{
     if(!user) return;
     timerRef.current=setInterval(()=>{
-      const aberta=registros.find(r=>r.usuarioId===user.id&&!r.horaFim);
+      const regsAtuais = registrosRef.current;
+      const aberta = regsAtuais.find(r=>r.usuarioId===user.id&&!r.horaFim);
       if(aberta) setModalH("aviso");
     },CHECK_INTERVAL);
     return()=>clearInterval(timerRef.current);
-  },[user,registros]);
+  },[user]); // NÃO depende de registros — usa ref
 
-  // Verificação fim de expediente (a cada minuto)
+  // Verificação fim de expediente (a cada 30s para maior precisão)
+  // Usa refs para sempre ter registros e encerrar atualizados — evita stale closure
   useEffect(()=>{
     if(!user) return;
-    expRef.current=setInterval(()=>{
-      const agora=new Date().toTimeString().slice(0,5);
-      const fim=fimExpediente(user.expediente);
-      if(!fim||agora<fim) return;
-      const aberta=registros.find(r=>r.usuarioId===user.id&&!r.horaFim);
+    expRef.current = setInterval(()=>{
+      const agora = new Date().toTimeString().slice(0,5);
+      const fim   = fimExpediente(user.expediente);
+      if(!fim || agora < fim) return;
+
+      // Usa ref para pegar registros atuais (não o valor capturado no closure)
+      const regsAtuais = registrosRef.current;
+      const aberta = regsAtuais.find(r => r.usuarioId===user.id && !r.horaFim);
       if(!aberta) return;
-      const [fh,fm]=fim.split(":").map(Number);
-      const [ah,am]=agora.split(":").map(Number);
-      const diff=(ah*60+am)-(fh*60+fm);
-      if(diff>=5) encerrar(fim,"Encerrado automaticamente");
-      else if(diff===0) setModalH("encerramento");
-    },60000);
+
+      const [fh,fm] = fim.split(":").map(Number);
+      const [ah,am] = agora.split(":").map(Number);
+      const diff = (ah*60+am) - (fh*60+fm);
+
+      if(diff === 0){
+        // Exatamente na hora — mostra modal para o usuário encerrar
+        setModalH("encerramento");
+      } else if(diff >= 5){
+        // 5+ minutos após o expediente sem resposta — encerra automaticamente
+        if(encerrarRef.current) {
+          encerrarRef.current(fim, "Encerrado automaticamente pelo sistema");
+        }
+      }
+    }, 30000); // verifica a cada 30 segundos
     return()=>clearInterval(expRef.current);
-  },[user,registros]);
+  },[user]); // NÃO depende de registros — usa ref
 
   const sessaoAtiva=registros.find(r=>r.usuarioId===user?.id&&!r.horaFim);
 
@@ -2360,6 +2384,9 @@ export default function App(){
       }
     }
   };
+
+  // Atualizar ref da função encerrar para o timer sempre usar a versão mais recente
+  encerrarRef.current = encerrar;
 
   const mudar=(pid)=>{
     const h=new Date().toTimeString().slice(0,5);
