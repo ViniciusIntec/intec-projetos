@@ -2063,7 +2063,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
       coresponsavel2:"", coresponsavel3:"",
       ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
       prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
-      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true,
+      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true, pausas:[],
     };
     if(!projeto) return base;
     // Spread do projeto e garantir campos do portal
@@ -2162,11 +2162,31 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
   const ICONES_ATU = ["📝","✅","⚠️","🔄","📐","🏗️","🔍","📦","⏸️","▶️","📞","💬","🎯","⚡"];
 
   // Calcula data de entrega prevista automaticamente ao mudar contrato ou prazo
-  const calcularEntregaPrevista = (dataContrato, prazo) => {
+  // Calcula total de dias úteis em pausas
+  const calcDiasPausados = (pausas) => {
+    if (!pausas || pausas.length === 0) return 0;
+    let total = 0;
+    pausas.forEach(p => {
+      if (!p.inicio) return;
+      const fim   = p.fim ? new Date(p.fim + "T12:00:00") : new Date();
+      const ini   = new Date(p.inicio + "T12:00:00");
+      let d = new Date(ini);
+      while (d <= fim) {
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) total++;
+        d.setDate(d.getDate() + 1);
+      }
+    });
+    return total;
+  };
+
+  const calcularEntregaPrevista = (dataContrato, prazo, pausas) => {
     if (!dataContrato || !prazo || prazo <= 0) return "";
+    const diasPausados = calcDiasPausados(pausas || form.pausas || []);
+    const prazoTotal   = prazo + diasPausados;
     const d = new Date(dataContrato + "T12:00:00");
     let diasUteis = 0;
-    while (diasUteis < prazo) {
+    while (diasUteis < prazoTotal) {
       d.setDate(d.getDate() + 1);
       const dow = d.getDay();
       if (dow !== 0 && dow !== 6) diasUteis++;
@@ -2175,14 +2195,37 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
   };
 
   const setContrato = (v) => {
-    const nova = calcularEntregaPrevista(v, form.prazo);
+    const nova = calcularEntregaPrevista(v, form.prazo, form.pausas);
     setForm(f=>({...f, dataContrato:v, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
   };
   const setPrazo = (v) => {
     const p = parseInt(v)||0;
-    const nova = calcularEntregaPrevista(form.dataContrato, p);
+    const nova = calcularEntregaPrevista(form.dataContrato, p, form.pausas);
     setForm(f=>({...f, prazo:p, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
   };
+
+  // Adiciona uma pausa e recalcula a entrega
+  const adicionarPausa = (pausa) => {
+    const novasPausas = [...(form.pausas||[]), pausa];
+    const nova = calcularEntregaPrevista(form.dataContrato, form.prazo, novasPausas);
+    setForm(f=>({...f, pausas:novasPausas, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
+  };
+
+  const removerPausa = (idx) => {
+    const novasPausas = (form.pausas||[]).filter((_,i)=>i!==idx);
+    const nova = calcularEntregaPrevista(form.dataContrato, form.prazo, novasPausas);
+    setForm(f=>({...f, pausas:novasPausas, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
+  };
+
+  const retornarPausa = (idx) => {
+    const hoje = new Date().toISOString().slice(0,10);
+    const novasPausas = (form.pausas||[]).map((p,i)=> i===idx ? {...p, fim:hoje} : p);
+    const nova = calcularEntregaPrevista(form.dataContrato, form.prazo, novasPausas);
+    setForm(f=>({...f, pausas:novasPausas, dataEntregaPrevista: nova || f.dataEntregaPrevista,
+      status: f.statusAuto ? "Em andamento" : f.status}));
+  };
+
+  const [novaPausa, setNovaPausa] = useState({inicio:"", motivo:""});
   const [np,setNp]=useState({desc:"",valor:"",pago:false});
   const s=(k,v)=>setForm(f=>({...f,[k]:v}));
   const addP=()=>{if(!np.desc||!np.valor)return;s("parcelas",[...(form.parcelas||[]),{...np,valor:parseFloat(np.valor)}]);setNp({desc:"",valor:"",pago:false});};
@@ -2278,6 +2321,77 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                   style={{border:`1.5px solid ${form.dataEntregaReal?(form.dataEntregaReal<=form.dataEntregaPrevista?C.verde:C.vermelho):C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:C.branco,width:"100%",boxSizing:"border-box"}}/>
               </div>
             </div>
+          </div>
+
+          {/* ── SEÇÃO PAUSAS ── */}
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>
+                ⏸ Pausas do Projeto
+              </h3>
+              {(form.pausas||[]).length>0&&(
+                <span style={{fontSize:11,color:C.laranja,fontWeight:700}}>
+                  +{calcDiasPausados(form.pausas)} dias úteis adicionados ao prazo
+                </span>
+              )}
+            </div>
+
+            {/* Lista de pausas */}
+            {(form.pausas||[]).length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                {(form.pausas||[]).map((p,i)=>{
+                  const ativa = !p.fim;
+                  const diasP = calcDiasPausados([p]);
+                  return(
+                    <div key={i} style={{display:"flex",gap:10,alignItems:"center",padding:"10px 14px",
+                      background:ativa?"#fff7ed":"#f0fdf4",borderRadius:10,
+                      border:`1px solid ${ativa?"#fde68a":"#86efac"}`}}>
+                      <div style={{fontSize:18}}>{ativa?"⏸":"▶"}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:ativa?"#92400e":"#166534"}}>
+                          {ativa?"Em pausa desde":"Pausa encerrada"} — {p.motivo||"sem motivo"}
+                        </div>
+                        <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>
+                          {fmtData(p.inicio)} {p.fim?`→ ${fmtData(p.fim)}`:"→ hoje"} · {diasP} dia(s) útil(eis)
+                        </div>
+                      </div>
+                      {ativa&&(
+                        <Btn onClick={()=>retornarPausa(i)} variant="verde" small>▶ Retornar</Btn>
+                      )}
+                      <button onClick={()=>removerPausa(i)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px"}}>🗑</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Adicionar nova pausa */}
+            {!(form.pausas||[]).some(p=>!p.fim)&&(
+              <div style={{background:C.cinzaFundo,borderRadius:10,padding:12,display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <label style={{fontSize:11,fontWeight:600,color:C.cinzaEscuro}}>Data de início</label>
+                  <input type="date" value={novaPausa.inicio} onChange={e=>setNovaPausa(n=>({...n,inicio:e.target.value}))}
+                    style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit"}}/>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:160}}>
+                  <label style={{fontSize:11,fontWeight:600,color:C.cinzaEscuro}}>Motivo da pausa</label>
+                  <input value={novaPausa.motivo} onChange={e=>setNovaPausa(n=>({...n,motivo:e.target.value}))}
+                    placeholder="Ex: Aguardando aprovação do cliente..."
+                    style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+                </div>
+                <Btn onClick={()=>{
+                  if(!novaPausa.inicio||!novaPausa.motivo) return;
+                  adicionarPausa({inicio:novaPausa.inicio,motivo:novaPausa.motivo,fim:null});
+                  setNovaPausa({inicio:"",motivo:""});
+                  if(form.statusAuto) s("status","PAUSADO");
+                }} small disabled={!novaPausa.inicio||!novaPausa.motivo}>⏸ Pausar Projeto</Btn>
+              </div>
+            )}
+            {(form.pausas||[]).some(p=>!p.fim)&&(
+              <div style={{padding:"8px 12px",background:"#fff7ed",borderRadius:8,fontSize:12,color:"#92400e",border:"1px solid #fde68a"}}>
+                ⏸ Projeto em pausa. Clique em "▶ Retornar" acima para registrar o retorno e retomar o prazo.
+              </div>
+            )}
           </div>
 
           <div>
