@@ -299,21 +299,44 @@ function render(d){
 
   // Popup de entregáveis quando progresso = 100%
   if(prog>=100 && d.driveEntregaveis){
-    var popup = document.createElement("div");
-    popup.id = "popup-entregaveis";
-    popup.style.cssText = "position:fixed;inset:0;background:rgba(15,25,50,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
-    popup.innerHTML =
-      '<div style="background:#fff;border-radius:20px;padding:36px 32px;max-width:480px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.3)">' +
-      '<div style="font-size:56px;margin-bottom:12px">🎉</div>' +
-      '<h2 style="color:#1a3a6b;margin:0 0 8px;font-size:22px;font-weight:900">Projeto Concluído!</h2>' +
-      '<p style="color:#6b7280;font-size:14px;margin:0 0 24px;line-height:1.6">Seus entregáveis estão disponíveis para download na pasta do Google Drive.</p>' +
-      '<a href="'+d.driveEntregaveis+'" target="_blank" rel="noreferrer" '+
-      'style="display:inline-block;background:linear-gradient(135deg,#1a3a6b,#2563a8);color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:16px">'+
-      '📂 Acessar Entregáveis</a><br>'+
-      '<button onclick="document.getElementById('popup-entregaveis').remove()" '+
-      'style="background:none;border:none;color:#8492a6;cursor:pointer;font-size:13px;margin-top:8px;font-family:inherit">Fechar</button>' +
-      '</div>';
-    document.body.appendChild(popup);
+    var popupEl = document.createElement("div");
+    popupEl.id = "popup-entregaveis";
+    popupEl.style.cssText = "position:fixed;inset:0;background:rgba(15,25,50,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
+
+    var inner = document.createElement("div");
+    inner.style.cssText = "background:#fff;border-radius:20px;padding:36px 32px;max-width:480px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.3)";
+
+    var emoji = document.createElement("div");
+    emoji.style.cssText = "font-size:56px;margin-bottom:12px";
+    emoji.textContent = "🎉";
+
+    var titulo = document.createElement("h2");
+    titulo.style.cssText = "color:#1a3a6b;margin:0 0 8px;font-size:22px;font-weight:900";
+    titulo.textContent = "Projeto Concluído!";
+
+    var desc = document.createElement("p");
+    desc.style.cssText = "color:#6b7280;font-size:14px;margin:0 0 24px;line-height:1.6";
+    desc.textContent = "Seus entregáveis estão disponíveis para download na pasta do Google Drive.";
+
+    var link = document.createElement("a");
+    link.href = d.driveEntregaveis;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.style.cssText = "display:inline-block;background:linear-gradient(135deg,#1a3a6b,#2563a8);color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:16px";
+    link.textContent = "📂 Acessar Entregáveis";
+
+    var fechar = document.createElement("button");
+    fechar.style.cssText = "display:block;margin:12px auto 0;background:none;border:none;color:#8492a6;cursor:pointer;font-size:13px;font-family:inherit";
+    fechar.textContent = "Fechar";
+    fechar.onclick = function(){ popupEl.remove(); };
+
+    inner.appendChild(emoji);
+    inner.appendChild(titulo);
+    inner.appendChild(desc);
+    inner.appendChild(link);
+    inner.appendChild(fechar);
+    popupEl.appendChild(inner);
+    document.body.appendChild(popupEl);
   }
 }
 
