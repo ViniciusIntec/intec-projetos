@@ -2217,12 +2217,17 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
     setForm(f=>({...f, pausas:novasPausas, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
   };
 
-  const retornarPausa = (idx) => {
-    const hoje = new Date().toISOString().slice(0,10);
-    const novasPausas = (form.pausas||[]).map((p,i)=> i===idx ? {...p, fim:hoje} : p);
+  const [retornandoIdx, setRetornandoIdx] = useState(null);
+  const [dataRetorno, setDataRetorno]       = useState("");
+
+  const confirmarRetorno = (idx) => {
+    const data = dataRetorno || new Date().toISOString().slice(0,10);
+    const novasPausas = (form.pausas||[]).map((p,i)=> i===idx ? {...p, fim:data} : p);
     const nova = calcularEntregaPrevista(form.dataContrato, form.prazo, novasPausas);
     setForm(f=>({...f, pausas:novasPausas, dataEntregaPrevista: nova || f.dataEntregaPrevista,
       status: f.statusAuto ? "Em andamento" : f.status}));
+    setRetornandoIdx(null);
+    setDataRetorno("");
   };
 
   const [novaPausa, setNovaPausa] = useState({inicio:"", motivo:""});
@@ -2356,7 +2361,19 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                         </div>
                       </div>
                       {ativa&&(
-                        <Btn onClick={()=>retornarPausa(i)} variant="verde" small>▶ Retornar</Btn>
+                        retornandoIdx===i ? (
+                          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                            <input type="date" value={dataRetorno}
+                              onChange={e=>setDataRetorno(e.target.value)}
+                              min={form.pausas[i]?.inicio}
+                              max={new Date().toISOString().slice(0,10)}
+                              style={{border:`1.5px solid ${C.verde}`,borderRadius:6,padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}/>
+                            <Btn onClick={()=>confirmarRetorno(i)} variant="verde" small disabled={!dataRetorno}>✓ Ok</Btn>
+                            <Btn onClick={()=>{setRetornandoIdx(null);setDataRetorno("");}} variant="ghost" small>✕</Btn>
+                          </div>
+                        ) : (
+                          <Btn onClick={()=>{setRetornandoIdx(i);setDataRetorno(new Date().toISOString().slice(0,10));}} variant="verde" small>▶ Retornar</Btn>
+                        )
                       )}
                       <button onClick={()=>removerPausa(i)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px"}}>🗑</button>
                     </div>
