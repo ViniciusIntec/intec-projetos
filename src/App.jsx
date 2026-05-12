@@ -1749,28 +1749,48 @@ function Escalas({ usuarioAtual, usuarios }) {
   const chave_lixo    = "intec_escala_lixo";
 
   // Próxima sexta-feira a partir de uma data
-  const proximaSegunda = (dataISO) => {
-    const d = dataISO ? new Date(dataISO+"T12:00:00") : new Date();
-    const dow = d.getDay();
-    const diff = dow <= 5 ? (5 - dow) : (12 - dow);
-    d.setDate(d.getDate() + (diff===0&&!dataISO?7:diff));
+  // Retorna a sexta-feira desta semana (ou da semana passada se hoje já passou)
+  const sextaFeiraDeUmaData = (dataISO) => {
+    const d = new Date((dataISO||new Date().toISOString().slice(0,10))+"T12:00:00");
+    const dow = d.getDay(); // 0=dom, 5=sex, 6=sab
+    // Recua para a sexta-feira da semana corrente
+    // Se dom(0): recua 1 dia para sexta anterior
+    // Se seg(1)..sex(5): avança para sexta da semana
+    // Se sab(6): recua 1 dia para sexta
+    let diff;
+    if (dow === 6) diff = -1;        // sábado → sexta de ontem
+    else if (dow === 0) diff = -1;   // domingo → sexta de ontem (mantém semana anterior)
+    else diff = 5 - dow;             // seg-sex → próxima sexta desta semana
+    d.setDate(d.getDate() + diff);
     return d.toISOString().slice(0,10);
   };
 
-  // Gerar próximas N semanas de uma escala a partir de hoje
-  const gerarSemanas = (membros, dataInicio, n=12) => {
-    if (!membros || membros.length === 0) return [];
+  // Gera lista de semanas (sex-a-sex) a partir da dataInicio da escala
+  // Sempre inclui passadas e futuras para calcular o índice correto
+  const gerarTodasSemanas = (membros, dataInicio) => {
+    if (!membros || membros.length === 0 || !dataInicio) return [];
+    // Calcular quantas semanas passaram desde o dataInicio até hoje
+    const ini   = new Date(dataInicio+"T12:00:00");
+    const hoje2 = new Date();
+    const diffMs = hoje2 - ini;
+    const diffSem = Math.floor(diffMs / (7*24*60*60*1000));
+    // Gerar de -2 semanas antes até +14 semanas depois
     const semanas = [];
-    let d = new Date(dataInicio+"T12:00:00");
-    for (let i = 0; i < n; i++) {
+    for (let i = -2; i <= 14; i++) {
+      const d = new Date(ini);
+      d.setDate(ini.getDate() + (i * 7));
+      const idx = ((diffSem + i) % membros.length + membros.length) % membros.length;
       semanas.push({
-        data: d.toISOString().slice(0,10),
-        membro: membros[i % membros.length],
+        data:   d.toISOString().slice(0,10),
+        membro: membros[idx],
+        offset: i,
       });
-      d.setDate(d.getDate() + 7);
     }
     return semanas;
   };
+
+  // Gerar semanas = alias para compatibilidade
+  const gerarSemanas = (membros, dataInicio) => gerarTodasSemanas(membros, dataInicio);
 
   // Estado das escalas salvo no localStorage
   const [revisao, setRevisao] = useState(() => {
@@ -1810,9 +1830,12 @@ function Escalas({ usuarioAtual, usuarios }) {
 
   const semanas = gerarSemanas(escala.membros, escala.dataInicio);
   const hoje = new Date().toISOString().slice(0,10);
-
-  // Semana atual = a mais próxima que não passou
-  const semanaAtual = semanas.find(s => s.data >= hoje) || semanas[0];
+  // Sexta-feira desta semana
+  const sextaAtual = sextaFeiraDeUmaData(hoje);
+  // Semana atual = a sexta exata desta semana
+  const semanaAtual = semanas.find(s => s.data === sextaAtual)
+    || semanas.find(s => s.data >= hoje)
+    || semanas[0];
 
   const moverMembro = (idx, dir) => {
     const lista = [...escala.membros];
@@ -1899,7 +1922,8 @@ function Escalas({ usuarioAtual, usuarios }) {
                   border:`1px solid ${atual?C.azulMedio:C.cinzaCard}`,opacity:passada?0.5:1}}>
                   <div style={{minWidth:80,fontSize:12,fontWeight:atual?700:400,color:atual?C.azulMedio:C.cinzaClaro}}>
                     {fmtData(s.data)}
-                    {atual&&<span style={{marginLeft:6,fontSize:10,background:C.azulMedio,color:"#fff",padding:"1px 5px",borderRadius:3,fontWeight:700}}>ATUAL</span>}
+                    {atual&&<span style={{marginLeft:6,fontSize:10,background:C.azulMedio,color:"#fff",padding:"1px 5px",borderRadius:3,fontWeight:700}}>ESTA SEMANA</span>}
+                    {passada&&!atual&&<span style={{marginLeft:6,fontSize:9,color:C.cinzaClaro}}>✓ passou</span>}
                   </div>
                   <div style={{width:28,height:28,borderRadius:"50%",background:cor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>
                     {s.membro.slice(0,2).toUpperCase()}
