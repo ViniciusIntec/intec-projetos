@@ -296,6 +296,25 @@ function render(d){
       if(fill) fill.style.width = prog+"%";
     });
   });
+
+  // Popup de entregáveis quando progresso = 100%
+  if(prog>=100 && d.driveEntregaveis){
+    var popup = document.createElement("div");
+    popup.id = "popup-entregaveis";
+    popup.style.cssText = "position:fixed;inset:0;background:rgba(15,25,50,.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
+    popup.innerHTML =
+      '<div style="background:#fff;border-radius:20px;padding:36px 32px;max-width:480px;width:100%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.3)">' +
+      '<div style="font-size:56px;margin-bottom:12px">🎉</div>' +
+      '<h2 style="color:#1a3a6b;margin:0 0 8px;font-size:22px;font-weight:900">Projeto Concluído!</h2>' +
+      '<p style="color:#6b7280;font-size:14px;margin:0 0 24px;line-height:1.6">Seus entregáveis estão disponíveis para download na pasta do Google Drive.</p>' +
+      '<a href="'+d.driveEntregaveis+'" target="_blank" rel="noreferrer" '+
+      'style="display:inline-block;background:linear-gradient(135deg,#1a3a6b,#2563a8);color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:16px">'+
+      '📂 Acessar Entregáveis</a><br>'+
+      '<button onclick="document.getElementById('popup-entregaveis').remove()" '+
+      'style="background:none;border:none;color:#8492a6;cursor:pointer;font-size:13px;margin-top:8px;font-family:inherit">Fechar</button>' +
+      '</div>';
+    document.body.appendChild(popup);
+  }
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────

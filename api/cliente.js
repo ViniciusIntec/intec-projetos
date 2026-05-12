@@ -76,6 +76,7 @@ export default async function handler(req) {
       prazo:                projeto.prazo || 0,
       dataEntregaPrevista:  projeto.data_entrega_prevista || null,
       dataEntregaReal:      projeto.data_entrega_real || null,
+      driveEntregaveis:      projeto.drive_entregaveis || '',
       // Portal
       progresso:            projeto.progresso || 0,
       obs:                  projeto.obs_cliente || '',

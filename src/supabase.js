@@ -201,6 +201,8 @@ function toProjetoFront(r) {
     temContrato:          r.tem_contrato || false,
     parcelas:             Array.isArray(r.parcelas) ? r.parcelas : [],
     driveUrl:             r.drive_url || '',
+    driveEntregaveis:     r.drive_entregaveis || '',
+    statusAuto:           r.status_auto ?? true,
     _doDrive:             r.do_drive || false,
     // Portal do cliente
     token_cliente:        r.token_cliente || '',
@@ -231,6 +233,8 @@ function toProjetoBack(p) {
     tem_contrato:          p.temContrato || false,
     parcelas:              p.parcelas || [],
     drive_url:             p.driveUrl || '',
+    drive_entregaveis:    p.driveEntregaveis || '',
+    status_auto:          p.statusAuto ?? true,
     do_drive:              p._doDrive || false,
     // Portal do cliente — preservar token e salvar progresso/obs
     ...(p.token_cliente        ? { token_cliente:      p.token_cliente }      : {}),

@@ -2049,7 +2049,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
       coresponsavel2:"", coresponsavel3:"",
       ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
       prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
-      obs:"", temContrato:false, parcelas:[], driveUrl:"",
+      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true,
     };
     if(!projeto) return base;
     // Spread do projeto e garantir campos do portal
@@ -2210,7 +2210,28 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               <Sel label="Co-responsável 3" value={form.coresponsavel3||""} onChange={v=>s("coresponsavel3",v)}
                 options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
               {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Ano</label><input value={form.ano} readOnly style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/></div> : <Sel label="Ano" value={form.ano} onChange={v=>s("ano",parseInt(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:y}))}/>}
-              <Sel label="Status" value={form.status} onChange={v=>s("status",v)} options={Object.keys(STATUS_CONFIG).map(k=>({value:k,label:k}))}/>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Status</label>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginLeft:"auto"}}>
+                    <input type="checkbox" id="statusAuto" checked={!!form.statusAuto} onChange={e=>{ const v=e.target.checked; s("statusAuto",v); if(v) s("status",calcStatusAuto(form)); }} style={{cursor:"pointer"}}/>
+                    <label htmlFor="statusAuto" style={{fontSize:11,color:form.statusAuto?C.verde:C.cinzaClaro,cursor:"pointer",fontWeight:600}}>
+                      {form.statusAuto?"⚡ Automático":"✋ Manual"}
+                    </label>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <select value={form.status} onChange={v=>{ s("status",v.target.value); s("statusAuto",false); }}
+                    disabled={!!form.statusAuto}
+                    style={{flex:1,border:`1.5px solid ${form.statusAuto?C.cinzaCard:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",cursor:form.statusAuto?"not-allowed":"pointer",background:form.statusAuto?"#f8fafc":C.branco,color:C.cinzaEscuro}}>
+                    {Object.keys(STATUS_CONFIG).map(k=><option key={k} value={k}>{k}</option>)}
+                  </select>
+                  {form.statusAuto&&<span style={{fontSize:11,color:C.verde,whiteSpace:"nowrap",fontWeight:600}}>
+                    → {calcStatusAuto(form)}
+                  </span>}
+                </div>
+                {form.statusAuto&&<span style={{fontSize:10,color:C.cinzaClaro}}>Calculado com base em prazo, responsável e progresso</span>}
+              </div>
             </div>
           </div>
           <div>
@@ -2249,6 +2270,18 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Obs</h3>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>
+                  📦 Link Entregáveis (para o cliente quando progresso = 100%)
+                  <span style={{fontSize:10,color:C.cinzaClaro,fontWeight:400,marginLeft:6}}>Link da pasta com os arquivos finais</span>
+                </label>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <input value={form.driveEntregaveis||""} onChange={e=>s("driveEntregaveis",e.target.value)}
+                    placeholder="https://drive.google.com/drive/folders/..."
+                    style={{flex:1,border:`1.5px solid ${form.driveEntregaveis?C.verde:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontFamily:"inherit",color:C.cinzaEscuro,background:C.branco}}/>
+                  {form.driveEntregaveis&&<a href={form.driveEntregaveis} target="_blank" rel="noreferrer" style={{color:C.verde,fontSize:12,whiteSpace:"nowrap",fontWeight:700}}>📂 Testar</a>}
+                </div>
+              </div>
               <div style={{display:"flex",flexDirection:"column",gap:4}}>
                 <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Observações</label>
                 <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
@@ -3036,6 +3069,8 @@ export default function App(){
     const n = {
       ...f,
       id: c,
+      // Recalcular status automático se ativo
+      status:             f.statusAuto ? calcStatusAuto(f) : f.status,
       // Sincronizar campos do portal explicitamente
       progresso:          f.progresso          ?? 0,
       obs_cliente:        f.obsCliente         ?? f.obs_cliente ?? "",
