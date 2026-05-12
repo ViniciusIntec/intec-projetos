@@ -3362,6 +3362,22 @@ export default function App(){
   const [usuarios,  setUsuarios]  = useState(USUARIOS_PADRAO);
   const [registros, setRegistros] = useState([]);
   const [carregando,setCarregando]= useState(true);
+
+  // ── PWA: hooks sempre no topo, antes de qualquer return condicional ───────
+  const [pwaPrompt,   setPwaPrompt]   = useState(null);
+  const [pwaInstalado,setPwaInstalado]= useState(false);
+  useEffect(()=>{
+    const handler = (e) => { e.preventDefault(); setPwaPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', ()=>{ setPwaInstalado(true); setPwaPrompt(null); });
+    return ()=> window.removeEventListener('beforeinstallprompt', handler);
+  },[]);
+  const instalarPWA = async () => {
+    if (!pwaPrompt) return;
+    pwaPrompt.prompt();
+    const { outcome } = await pwaPrompt.userChoice;
+    if (outcome === 'accepted') { setPwaInstalado(true); setPwaPrompt(null); }
+  };
   const [user, setUser] = useState(()=>{
     try {
       const s = localStorage.getItem("intec_user_logado");
@@ -3810,22 +3826,6 @@ export default function App(){
   const isGestorOuAdmin = ["admin","gestor"].includes(user.perfil);
   const isColab    = user.perfil === "colaborador";
 
-  // ── PWA: captura o evento de instalação ──────────────────────────────────
-  const [pwaPrompt, setPwaPrompt] = useState(null);
-  const [pwaInstalado, setPwaInstalado] = useState(false);
-  useEffect(()=>{
-    const handler = (e) => { e.preventDefault(); setPwaPrompt(e); };
-    window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', ()=>{ setPwaInstalado(true); setPwaPrompt(null); });
-    return ()=> window.removeEventListener('beforeinstallprompt', handler);
-  },[]);
-
-  const instalarPWA = async () => {
-    if (!pwaPrompt) return;
-    pwaPrompt.prompt();
-    const { outcome } = await pwaPrompt.userChoice;
-    if (outcome === 'accepted') { setPwaInstalado(true); setPwaPrompt(null); }
-  };
   const abas=[
     {id:"dashboard",    label:"Dashboard",       icone:"📊"},
     {id:"projetos",     label:"Projetos",         icone:"📁"},

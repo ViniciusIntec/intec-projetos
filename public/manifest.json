@@ -1,7 +1,7 @@
 {
   "name": "INTEC Engenharia Integrada",
   "short_name": "INTEC",
-  "description": "Sistema de controle de projetos — INTEC Engenharia",
+  "description": "Sistema de controle de projetos",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a3a6b",
@@ -11,42 +11,31 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
+  "categories": [
+    "business",
+    "productivity"
   ],
-  "categories": ["business", "productivity"],
   "shortcuts": [
     {
       "name": "Dashboard",
-      "url": "/?aba=dashboard",
+      "url": "/",
       "description": "Ver painel principal"
     },
     {
-      "name": "Iniciar Sessão",
-      "url": "/?aba=horas",
-      "description": "Registrar horas de trabalho"
+      "name": "Banco de Horas",
+      "url": "/",
+      "description": "Registrar horas"
     },
     {
       "name": "Projetos",
-      "url": "/?aba=projetos",
-      "description": "Ver lista de projetos"
+      "url": "/",
+      "description": "Ver projetos"
     }
   ]
 }
