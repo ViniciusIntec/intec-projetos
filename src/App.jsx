@@ -1955,7 +1955,21 @@ function PainelDrive({drive,projetosExistentes,onImportar}){
 
 // ─── MODAL PROJETO ─────────────────────────────────────────────────────────────
 function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
-  const [form,setForm]=useState(projeto||{id:"",codigo:"",cliente:"",responsavel:"",coresponsavel:"",coresponsavel2:"",coresponsavel3:"",ano:new Date().getFullYear(),tipo:"PE",status:"Novo/Definir",prazo:0,dataContrato:"",dataEntregaPrevista:"",dataEntregaReal:"",obs:"",temContrato:false,parcelas:[],driveUrl:""});
+  const [form,setForm]=useState(()=>({
+    id:"", codigo:"", cliente:"", responsavel:"", coresponsavel:"",
+    coresponsavel2:"", coresponsavel3:"",
+    ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
+    prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
+    obs:"", temContrato:false, parcelas:[], driveUrl:"",
+    // Portal do cliente — carrega do projeto existente
+    token_cliente:      projeto?.token_cliente      || "",
+    link_cliente_ativo: projeto?.link_cliente_ativo || false,
+    progresso:          projeto?.progresso          || 0,
+    obs_cliente:        projeto?.obs_cliente        || "",
+    obsCliente:         projeto?.obs_cliente        || "",
+    // Sobrescreve com todos os campos do projeto se existir
+    ...(projeto || {}),
+  }));
   const [abaModal, setAbaModal] = useState("info"); // info | financeiro | portal
   const [atualizacoes, setAtualizacoes] = useState([]);
   const [carregandoAtu, setCarregandoAtu] = useState(false);
@@ -2871,7 +2885,8 @@ export default function App(){
 
   const salvarP = async (f) => {
     const c = f.codigo?.trim(); if(!c) return;
-    const n = {...f, id:c};
+    // Garantir que obsCliente e obs_cliente estejam sincronizados
+    const n = {...f, id:c, obs_cliente: f.obsCliente||f.obs_cliente||""};
     if(modal.modo==="novo") setProjetos(p=>[...p,n]);
     else setProjetos(p=>p.map(x=>x.id===modal.projeto.id?n:x));
     setModal(null);
