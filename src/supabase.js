@@ -184,6 +184,7 @@ function toProjetoFront(r) {
     // Portal do cliente
     token_cliente:        r.token_cliente || '',
     link_cliente_ativo:   r.link_cliente_ativo || false,
+    linkClienteAtivo:     r.link_cliente_ativo || false,
     progresso:            r.progresso || 0,
     obs_cliente:          r.obs_cliente || '',
   };
@@ -212,7 +213,7 @@ function toProjetoBack(p) {
     do_drive:              p._doDrive || false,
     // Portal do cliente — preservar token e salvar progresso/obs
     ...(p.token_cliente        ? { token_cliente:      p.token_cliente }      : {}),
-    ...(p.link_cliente_ativo !== undefined ? { link_cliente_ativo: p.link_cliente_ativo } : {}),
+    link_cliente_ativo: p.linkClienteAtivo ?? p.link_cliente_ativo ?? false,
     progresso:             p.progresso ?? 0,
     obs_cliente:           p.obsCliente  ?? p.obs_cliente ?? '',
   };

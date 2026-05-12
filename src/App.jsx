@@ -1971,6 +1971,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
       // Portal — garantir que vieram do banco
       token_cliente:      projeto.token_cliente      || "",
       link_cliente_ativo: projeto.link_cliente_ativo || false,
+      linkClienteAtivo:   projeto.link_cliente_ativo || false,
       progresso:          projeto.progresso          ?? 0,
       obs_cliente:        projeto.obs_cliente        || "",
       obsCliente:         projeto.obs_cliente        || "",
@@ -2895,9 +2896,12 @@ export default function App(){
       ...f,
       id: c,
       // Sincronizar campos do portal explicitamente
-      progresso:   f.progresso   ?? 0,
-      obs_cliente: f.obsCliente  || f.obs_cliente || "",
-      obsCliente:  f.obsCliente  || f.obs_cliente || "",
+      progresso:          f.progresso          ?? 0,
+      obs_cliente:        f.obsCliente         ?? f.obs_cliente ?? "",
+      obsCliente:         f.obsCliente         ?? f.obs_cliente ?? "",
+      linkClienteAtivo:   f.linkClienteAtivo   ?? f.link_cliente_ativo ?? false,
+      link_cliente_ativo: f.linkClienteAtivo   ?? f.link_cliente_ativo ?? false,
+      token_cliente:      f.tokenCliente       || f.token_cliente || "",
     };
     if(modal.modo==="novo") setProjetos(p=>[...p,n]);
     else setProjetos(p=>p.map(x=>x.id===modal.projeto.id?n:x));
