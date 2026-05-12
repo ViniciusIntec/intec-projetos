@@ -112,6 +112,20 @@ export const db = {
       if (error) throw error;
       return toSessaoFront(data);
     },
+    async excluir(id) {
+      const { error } = await supabase
+        .from('sessoes_horas')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    async atualizarObs(id, obs) {
+      const { error } = await supabase
+        .from('sessoes_horas')
+        .update({ obs })
+        .eq('id', id);
+      if (error) throw error;
+    },
   },
 
   recessos: {

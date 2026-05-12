@@ -1558,10 +1558,28 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
   );
 }
 
-function BancoHoras({registros,usuarios,projetos,usuarioAtual,onAbrirEncerramento}){
+function BancoHoras({registros,setRegistros,usuarios,projetos,usuarioAtual,onAbrirEncerramento}){
   const [filtroUser,setFU]=useState(usuarioAtual.perfil==="colaborador"?usuarioAtual.id:"todos");
   const [filtroMes,setFM]=useState("todos");
+  const [editandoObs,setEditandoObs]=useState(null); // id da sessão sendo editada
+  const [novaObs,setNovaObs]=useState("");
   const isGestor=["admin","gestor"].includes(usuarioAtual.perfil);
+
+  const podeEditar = (r) => isGestor || r.usuarioId===usuarioAtual.id;
+
+  const excluirSessao = async (id) => {
+    if(!window.confirm("Excluir este registro?")) return;
+    setRegistros(x=>x.filter(x2=>x2.id!==id));
+    try { await db.sessoes.excluir(id); } catch(e){ console.error("Erro excluir sessao:",e); }
+  };
+
+  const salvarObs = async (id) => {
+    setRegistros(x=>x.map(r=>r.id===id?{...r,obs:novaObs}:r));
+    setEditandoObs(null);
+    try {
+      await db.sessoes.atualizarObs(id, novaObs);
+    } catch(e){ console.error("Erro salvar obs:",e); }
+  };
 
   const meses=useMemo(()=>{const s=new Set();registros.forEach(r=>{if(r.data)s.add(r.data.slice(0,7));});return [...s].sort((a,b)=>b.localeCompare(a));},[registros]);
 
@@ -1644,7 +1662,7 @@ function BancoHoras({registros,usuarios,projetos,usuarioAtual,onAbrirEncerrament
         <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.cinzaCard}`}}><h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>📋 Histórico de Sessões</h3></div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><tr style={{background:C.azulEscuro}}>{["Data","Colaborador","Projeto","Entrada","Saída","Duração","Obs"].map(h=><th key={h} style={{padding:"10px 14px",color:C.ciano,textAlign:"left",fontWeight:700,fontSize:11}}>{h}</th>)}</tr></thead>
+            <thead><tr style={{background:C.azulEscuro}}>{["Data","Colaborador","Projeto","Entrada","Saída","Duração","Obs",""].map(h=><th key={h} style={{padding:"10px 14px",color:C.ciano,textAlign:"left",fontWeight:700,fontSize:11}}>{h}</th>)}</tr></thead>
             <tbody>
               {filtrados.length===0&&<tr><td colSpan={7} style={{padding:"24px",textAlign:"center",color:C.cinzaClaro}}>Nenhum registro encontrado</td></tr>}
               {[...filtrados].sort((a,b)=>(b.inicioTs||0)-(a.inicioTs||0)).map((r,i)=>{
@@ -1658,9 +1676,26 @@ function BancoHoras({registros,usuarios,projetos,usuarioAtual,onAbrirEncerrament
                   <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{r.horaInicio||"—"}</td>
                   <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{aberta?<span style={{color:C.verde,fontWeight:700}}>Em aberto</span>:r.horaFim}</td>
                   <td style={{padding:"9px 14px",fontWeight:700,color:aberta?C.verde:C.azulEscuro}}>{aberta?"...":fmtDuracao(r.duracaoMin)}</td>
-                  <td style={{padding:"9px 14px",color:C.cinzaClaro,fontSize:11}}>{r.obs||"—"}</td>
-                  {["admin","gestor"].includes(usuarioAtual.perfil)&&<td style={{padding:"9px 14px"}}>
-                    <Btn onClick={e=>{e.stopPropagation();if(window.confirm("Excluir este registro?"))setRegistros(x=>x.filter(x2=>x2.id!==r.id));}} variant="danger" small>🗑</Btn>
+                  <td style={{padding:"9px 14px",minWidth:180}}>
+                    {editandoObs===r.id ? (
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <input value={novaObs} onChange={e=>setNovaObs(e.target.value)}
+                          onKeyDown={e=>{if(e.key==="Enter")salvarObs(r.id);if(e.key==="Escape")setEditandoObs(null);}}
+                          autoFocus
+                          style={{flex:1,border:`1.5px solid ${C.azulClaro}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit"}}/>
+                        <button onClick={()=>salvarObs(r.id)} style={{background:C.verde,color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,fontWeight:700}}>✓</button>
+                        <button onClick={()=>setEditandoObs(null)} style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14}}>✕</button>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:6,cursor:podeEditar(r)?"pointer":"default"}}
+                        onClick={()=>{ if(podeEditar(r)){setEditandoObs(r.id);setNovaObs(r.obs||"");} }}>
+                        <span style={{color:r.obs?C.cinzaEscuro:C.cinzaClaro,fontSize:11,flex:1}}>{r.obs||"—"}</span>
+                        {podeEditar(r)&&<span style={{color:C.azulClaro,fontSize:11,opacity:0.6,flexShrink:0}}>✏</span>}
+                      </div>
+                    )}
+                  </td>
+                  {podeEditar(r)&&<td style={{padding:"9px 14px",width:40}}>
+                    <Btn onClick={e=>{e.stopPropagation();excluirSessao(r.id);}} variant="danger" small>🗑</Btn>
                   </td>}
                 </tr>);
               })}
@@ -3049,7 +3084,7 @@ export default function App(){
         {aba==="dashboard" &&<Dashboard projetos={projetos} onAbrirProjeto={abrirP} drive={drive} onImportar={importar} usuarioAtual={user}/>}
         {aba==="projetos"  &&<ListaProjetos projetos={projetos} onAbrirProjeto={abrirP} onNovoProjeto={novoP} usuarios={usuarios}/>}
         {aba==="financeiro"&&<Financeiro projetos={projetos}/>}
-        {aba==="horas"          &&<BancoHoras registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
+        {aba==="horas"          &&<BancoHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
         {aba==="produtividade" &&<Produtividade registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario}/>}
         {aba==="calendario"    &&<ModuloCalendario calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
