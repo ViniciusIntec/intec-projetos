@@ -56,25 +56,36 @@ export default async function handler(req) {
 
     // Retornar apenas dados públicos (sem financeiro, sem dados internos)
     const dadosPublicos = {
+      // Identificação
       codigo:               projeto.codigo,
       cliente:              projeto.cliente,
       tipo:                 projeto.tipo,
       status:               projeto.status,
-      dataContrato:         projeto.data_contrato,
-      dataEntregaPrevista:  projeto.data_entrega_prevista,
-      dataEntregaReal:      projeto.data_entrega_real,
-      obs:                  projeto.obs_cliente || '', // campo separado para obs do cliente
+      // Responsáveis
+      responsavel:          projeto.responsavel || '',
+      coresponsavel:        projeto.coresponsavel || '',
+      coresponsavel2:       projeto.coresponsavel2 || '',
+      coresponsavel3:       projeto.coresponsavel3 || '',
+      // Contrato e prazo
+      dataContrato:         projeto.data_contrato || null,
+      prazo:                projeto.prazo || 0,
+      dataEntregaPrevista:  projeto.data_entrega_prevista || null,
+      dataEntregaReal:      projeto.data_entrega_real || null,
+      // Portal
       progresso:            projeto.progresso || 0,
-      atualizacoes:         (atualizacoes || []).map(a => ({
-        id:          a.id,
-        tipo:        a.tipo,        // "manual" | "sessao" | "status"
-        titulo:      a.titulo,
-        descricao:   a.descricao,
-        autor:       a.autor_nome,
-        data:        a.created_at,
-        visivel:     a.visivel_cliente,
-        icone:       a.icone,
-      })).filter(a => a.visivel !== false),
+      obs:                  projeto.obs_cliente || '',
+      // Atualizações visíveis ao cliente
+      atualizacoes: (atualizacoes || [])
+        .filter(a => a.visivel_cliente !== false)
+        .map(a => ({
+          id:       a.id,
+          tipo:     a.tipo,
+          titulo:   a.titulo,
+          descricao:a.descricao,
+          autor:    a.autor_nome,
+          data:     a.created_at,
+          icone:    a.icone || '📝',
+        })),
     };
 
     return new Response(JSON.stringify(dadosPublicos), {
