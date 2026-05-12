@@ -7,6 +7,38 @@ const DRIVE_ROOT_ID    = "0AIRz2lul3P76Uk9PVA";
 const SCOPES           = "https://www.googleapis.com/auth/drive.readonly";
 const CHECK_INTERVAL   = 30 * 60 * 1000; // 30min
 
+// Solicitar permissão de notificação ao carregar
+function pedirPermissaoNotificacao() {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+// Disparar notificação nativa do sistema operacional
+function notificarSistema(titulo, corpo, tag="intec-geral", duracaoMs=10000) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const n = new Notification(titulo, {
+      body:     corpo,
+      icon:     "https://intec-projetos.vercel.app/icons.svg",
+      tag:      tag,
+      renotify: true,
+      silent:   false,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    setTimeout(() => n.close(), duracaoMs);
+  } catch(e) { console.warn("Notificação:", e); }
+}
+
+// Controle de notificações já enviadas (evitar repetir na mesma sessão)
+const _notifsEnviadas = new Set();
+function notificarUmaVez(chave, titulo, corpo, tag) {
+  if (_notifsEnviadas.has(chave)) return;
+  _notifsEnviadas.add(chave);
+  notificarSistema(titulo, corpo, tag, 12000);
+}
+
 // ─── CORES INTEC ───────────────────────────────────────────────────────────────
 const C = {
   azulEscuro:"#1a3a6b", azulMedio:"#2563a8", azulClaro:"#3b8fd4",
@@ -3342,11 +3374,16 @@ export default function App(){
   const drive    = useGoogleDrive();
   const timerRef      = useRef(null);
   const expRef        = useRef(null);
-  const registrosRef  = useRef([]);   // sempre tem o valor mais atual de registros
-  const encerrarRef   = useRef(null); // sempre tem a função encerrar mais atual
+  const notifRef      = useRef(null); // timer de notificações gerais
+  const registrosRef  = useRef([]);
+  const encerrarRef   = useRef(null);
+  const projetosRef   = useRef([]);
+  const userRef       = useRef(null);
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
   useEffect(() => { registrosRef.current = registros; }, [registros]);
+  useEffect(() => { projetosRef.current  = projetos;   }, [projetos]);
+  useEffect(() => { userRef.current      = user;        }, [user]);
 
   // ── Carregar dados do Supabase ao iniciar ──
   useEffect(() => {
@@ -3414,16 +3451,135 @@ export default function App(){
     return cleanup; // cleanup ao desmontar
   }, []);
 
-  // Timer verificação de atividade (30min) — usa ref para evitar stale closure
+  // ── Timer central de notificações (30min) ──────────────────────────────────
   useEffect(()=>{
     if(!user) return;
-    timerRef.current=setInterval(()=>{
-      const regsAtuais = registrosRef.current;
-      const aberta = regsAtuais.find(r=>r.usuarioId===user.id&&!r.horaFim);
-      if(aberta) setModalH("aviso");
-    },CHECK_INTERVAL);
-    return()=>clearInterval(timerRef.current);
-  },[user]); // NÃO depende de registros — usa ref
+
+    const verificarTudo = () => {
+      const u        = userRef.current;
+      const regs     = registrosRef.current;
+      const projs    = projetosRef.current;
+      if (!u) return;
+
+      const agora    = new Date();
+      const hojeISO  = agora.toISOString().slice(0,10);
+      const dow      = agora.getDay(); // 0=dom,5=sex,6=sab
+      const horaAtual= agora.toTimeString().slice(0,5);
+
+      // ── 1. VERIFICAÇÃO DE SESSÃO ATIVA ──────────────────────────────────
+      const sessaoAberta = regs.find(r=>r.usuarioId===u.id&&!r.horaFim);
+      if (sessaoAberta) {
+        setModalH("aviso");
+        notificarSistema(
+          "⏰ INTEC — Verificação de Atividade",
+          `Olá, ${u.nome}! Você ainda está trabalhando no projeto?`,
+          "intec-atividade", 15000
+        );
+      }
+
+      // ── 2. LEMBRETE DE SESSÃO NÃO INICIADA (em horário comercial) ───────
+      if (!sessaoAberta) {
+        const [hh, mm] = horaAtual.split(":").map(Number);
+        const dentroDoExpediente = (() => {
+          if (!u.expediente) return hh >= 9 && hh < 18;
+          if (u.expediente.segunda) {
+            const dias = ["domingo","segunda","terca","quarta","quinta","sexta","sabado"];
+            const diaExp = u.expediente[dias[dow]];
+            if (!diaExp?.ativo) return false;
+            const ini = diaExp.turno1?.inicio ? parseInt(diaExp.turno1.inicio) : 9;
+            const fim = diaExp.turno2?.ativo ? parseInt(diaExp.turno2.fim||"18") : parseInt(diaExp.turno1?.fim||"18");
+            return hh >= ini && hh < fim;
+          }
+          return hh >= 9 && hh < 18;
+        })();
+        if (dentroDoExpediente && dow >= 1 && dow <= 5) {
+          notificarSistema(
+            "📋 INTEC — Sessão não iniciada",
+            `${u.nome}, você está no horário de trabalho mas sem sessão ativa. Não esqueça de registrar!`,
+            "intec-sem-sessao", 12000
+          );
+        }
+      }
+
+      // ── 3. LEMBRETE DO LIXO — toda sexta ────────────────────────────────
+      if (dow === 5) {
+        try {
+          const dadosLixo = JSON.parse(localStorage.getItem("intec_escala_lixo")||"{}");
+          if (dadosLixo.membros && dadosLixo.dataInicio) {
+            const ini = new Date(dadosLixo.dataInicio+"T12:00:00");
+            const diffSem = Math.round((agora - ini) / (7*24*60*60*1000));
+            const idx = ((diffSem % dadosLixo.membros.length) + dadosLixo.membros.length) % dadosLixo.membros.length;
+            const responsavel = dadosLixo.membros[idx];
+            const chave = `lixo-${hojeISO}`;
+            notificarUmaVez(
+              chave,
+              "🗑 INTEC — Coleta de Lixo",
+              `Esta semana é a vez de ${responsavel} tirar o lixo!`,
+              "intec-lixo"
+            );
+          }
+        } catch(e) {}
+      }
+
+      // ── 4. PROJETOS VENCENDO ESTA SEMANA ────────────────────────────────
+      if (projs && projs.length > 0) {
+        const criticos = projs.filter(p => {
+          if (!p.dataEntregaPrevista) return false;
+          if (["CONCLUÍDO","CANCELADO"].includes(p.status)) return false;
+          // Só os projetos que o usuário é responsável
+          const ehResp = p.responsavel===u.nome || p.coresponsavel===u.nome ||
+                         p.coresponsavel2===u.nome || p.coresponsavel3===u.nome;
+          if (!ehResp && u.perfil==="colaborador") return false;
+          const dias = Math.ceil((new Date(p.dataEntregaPrevista) - agora) / 86400000);
+          return dias >= 0 && dias <= 7;
+        });
+        if (criticos.length > 0) {
+          const chave = `prazo-${hojeISO}-${criticos.map(p=>p.id).join(",")}`;
+          const nomes = criticos.map(p=>p.codigo).join(", ");
+          notificarUmaVez(
+            chave,
+            `⚠️ INTEC — ${criticos.length} projeto(s) vencendo esta semana`,
+            `Prazo próximo: ${nomes}. Acesse o sistema para verificar.`,
+            "intec-prazo"
+          );
+        }
+      }
+
+      // ── 5. REVISÃO DE PROJETOS — toda sexta ─────────────────────────────
+      if (dow === 5) {
+        try {
+          const dadosRevisao = JSON.parse(localStorage.getItem("intec_escala_revisao")||"{}");
+          if (dadosRevisao.membros && dadosRevisao.dataInicio) {
+            const ini = new Date(dadosRevisao.dataInicio+"T12:00:00");
+            const diffSem = Math.round((agora - ini) / (7*24*60*60*1000));
+            const idx = ((diffSem % dadosRevisao.membros.length) + dadosRevisao.membros.length) % dadosRevisao.membros.length;
+            const responsavel = dadosRevisao.membros[idx];
+            const chave = `revisao-${hojeISO}`;
+            notificarUmaVez(
+              chave,
+              "🔍 INTEC — Revisão de Projetos",
+              `Esta semana a revisão de projetos é responsabilidade de ${responsavel}.`,
+              "intec-revisao"
+            );
+            // Notificar o próprio responsável especialmente
+            if (responsavel === u.nome) {
+              notificarUmaVez(
+                `revisao-voce-${hojeISO}`,
+                "🔍 INTEC — É a sua vez de revisar!",
+                `${u.nome}, hoje é sexta e esta semana a revisão de projetos é sua. Não esqueça!`,
+                "intec-revisao-voce"
+              );
+            }
+          }
+        } catch(e) {}
+      }
+    };
+
+    // Roda imediatamente ao logar (com delay de 3s) e depois a cada 30min
+    const t0 = setTimeout(verificarTudo, 3000);
+    timerRef.current = setInterval(verificarTudo, CHECK_INTERVAL);
+    return()=>{ clearTimeout(t0); clearInterval(timerRef.current); };
+  },[user]); // NÃO depende de estado — usa refs
 
   // Verificação fim de expediente (a cada 30s para maior precisão)
   // Usa refs para sempre ter registros e encerrar atualizados — evita stale closure
@@ -3450,6 +3606,10 @@ export default function App(){
         // 5+ minutos após o expediente sem resposta — encerra automaticamente
         if(encerrarRef.current) {
           encerrarRef.current(fim, "Encerrado automaticamente pelo sistema");
+          notificarSistema(
+            "⏹ INTEC — Sessão Encerrada",
+            `Sua sessão foi encerrada automaticamente às ${fim}. Expediente finalizado!`,
+          );
           // Notificar colaborador e gestor por email
           const uAtual = registrosRef.current.find(r => r.usuarioId === user.id && !r.horaFim);
           if(uAtual) {
@@ -3632,10 +3792,11 @@ export default function App(){
   );
 
   const fazerLogin = (u) => {
-    // Busca o usuário atualizado da lista (pode ter salário/expediente atualizado)
     const uAtualizado = usuarios.find(x=>x.id===u.id) || u;
     setUser(uAtualizado);
     localStorage.setItem("intec_user_logado", JSON.stringify(uAtualizado));
+    // Pedir permissão de notificação ao logar
+    pedirPermissaoNotificacao();
     setTimeout(()=>setModalH("checkin"),600);
   };
   const fazerLogout = () => {
