@@ -258,3 +258,89 @@ export function iniciarRealtime({ onProjetosChange, onSessoesChange }) {
 
   return () => supabase.removeChannel(canal); // retorna função de cleanup
 }
+
+// ─── EMAIL VIA RESEND (chama a API da Vercel) ─────────────────────────────────
+export async function enviarEmail(tipo, dados) {
+  try {
+    const res = await fetch('/api/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, dados }),
+    });
+    const result = await res.json();
+    if (!res.ok) console.error('Erro email:', result);
+    return result;
+  } catch (err) {
+    console.error('Erro ao enviar email:', err);
+  }
+}
+
+// ─── PORTAL DO CLIENTE ────────────────────────────────────────────────────────
+export const portal = {
+
+  // Gerar token único para o projeto
+  async gerarToken(projetoId) {
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(20)))
+      .map(b => b.toString(16).padStart(2,'0')).join('');
+    const { data, error } = await supabase
+      .from('projetos')
+      .update({ token_cliente: token, link_cliente_ativo: true })
+      .eq('id', projetoId)
+      .select('token_cliente')
+      .single();
+    if (error) throw error;
+    return data.token_cliente;
+  },
+
+  // Ativar/desativar link
+  async setLinkAtivo(projetoId, ativo) {
+    const { error } = await supabase
+      .from('projetos')
+      .update({ link_cliente_ativo: ativo })
+      .eq('id', projetoId);
+    if (error) throw error;
+  },
+
+  // Buscar atualizações do projeto
+  async listarAtualizacoes(projetoId) {
+    const { data, error } = await supabase
+      .from('atualizacoes_projeto')
+      .select('*')
+      .eq('projeto_id', projetoId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Adicionar atualização manual
+  async adicionarAtualizacao(projetoId, { tipo, titulo, descricao, autorId, autorNome, icone, visivelCliente=true }) {
+    const { data, error } = await supabase
+      .from('atualizacoes_projeto')
+      .insert({
+        projeto_id: projetoId, tipo: tipo||'manual',
+        titulo, descricao: descricao||'',
+        autor_id: autorId||null, autor_nome: autorNome||'',
+        icone: icone||'📝', visivel_cliente: visivelCliente,
+      })
+      .select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  // Excluir atualização
+  async excluirAtualizacao(id) {
+    const { error } = await supabase
+      .from('atualizacoes_projeto')
+      .delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Atualizar progresso e obs do cliente
+  async atualizarProgresso(projetoId, progresso, obsCliente) {
+    const { error } = await supabase
+      .from('projetos')
+      .update({ progresso, obs_cliente: obsCliente })
+      .eq('id', projetoId);
+    if (error) throw error;
+  },
+};

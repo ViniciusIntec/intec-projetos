@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { db, iniciarRealtime } from "./supabase.js";
+import { db, iniciarRealtime, enviarEmail, portal } from "./supabase.js";
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = "26616128245-j4kghm435os4m3vu42tq32ikkjmbvrp6.apps.googleusercontent.com";
@@ -75,9 +75,34 @@ const horaMin    = h => { if(!h) return 0; const [hh,mm]=h.split(":").map(Number
 // Calcula horas diárias de trabalho baseado no expediente do usuário
 // Suporta 1 ou 2 turnos com modo E (ambos) ou OU (apenas 1 turno por dia)
 // Estrutura: { turno1:{inicio,fim}, turno2:{ativo,inicio,fim}, modo:"E"|"OU" }
+// Dias da semana
+const DIAS_SEMANA = ["domingo","segunda","terca","quarta","quinta","sexta","sabado"];
+const DIAS_LABEL  = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+// Formato novo de expediente por dia da semana:
+// { segunda: { ativo:true, turno1:{inicio,fim}, turno2:{ativo,inicio,fim} }, ... }
+
+// Calcula horas de um dia específico do expediente
+const calcHorasDiaSemana = (diaExp) => {
+  if (!diaExp || !diaExp.ativo) return 0;
+  const h1 = diaExp.turno1?.inicio && diaExp.turno1?.fim
+    ? Math.max(0, (horaMin(diaExp.turno1.fim) - horaMin(diaExp.turno1.inicio)) / 60) : 0;
+  const h2 = diaExp.turno2?.ativo && diaExp.turno2?.inicio && diaExp.turno2?.fim
+    ? Math.max(0, (horaMin(diaExp.turno2.fim) - horaMin(diaExp.turno2.inicio)) / 60) : 0;
+  return Math.round((h1 + h2) * 10) / 10;
+};
+
+// Média de horas por dia útil (seg-sex com ativo=true)
 const calcHorasDia = (expediente) => {
   if (!expediente) return 7;
-  // Formato novo com turnos
+  // Formato novo por dia da semana
+  if (expediente.segunda !== undefined) {
+    const diasUteis = ["segunda","terca","quarta","quinta","sexta"];
+    const total = diasUteis.reduce((a, d) => a + calcHorasDiaSemana(expediente[d]), 0);
+    const ativos = diasUteis.filter(d => expediente[d]?.ativo).length;
+    return ativos > 0 ? Math.round((total / ativos) * 10) / 10 : 0;
+  }
+  // Formato turno1/turno2 (legado)
   if (expediente.turno1) {
     const h1 = expediente.turno1.inicio && expediente.turno1.fim
       ? Math.max(0, (horaMin(expediente.turno1.fim) - horaMin(expediente.turno1.inicio)) / 60) : 0;
@@ -86,37 +111,78 @@ const calcHorasDia = (expediente) => {
     if (expediente.turno2?.ativo && expediente.modo === "OU") return Math.max(h1, h2);
     return Math.round((h1 + h2) * 10) / 10;
   }
-  // Formato legado {inicio, fim} — converte automaticamente
-  // Ex: {inicio:"09:00", fim:"18:00"} = considera intervalo de almoço de 2h → 7h
+  // Formato legado simples
   if (expediente.inicio && expediente.fim) {
     const total = Math.max(0, (horaMin(expediente.fim) - horaMin(expediente.inicio)) / 60);
-    // Se total > 6h assume que tem intervalo de 1h de almoço (padrão CLT)
     return total > 6 ? total - 1 : total;
   }
   return 7;
 };
 
+// Horas previstas para um dia específico (data ISO)
+const calcHorasDiaData = (expediente, dataISO) => {
+  if (!expediente || !dataISO) return calcHorasDia(expediente);
+  if (expediente.segunda !== undefined) {
+    const dow = new Date(dataISO + "T12:00:00").getDay(); // 0=dom,1=seg...
+    const nomeDia = DIAS_SEMANA[dow];
+    return calcHorasDiaSemana(expediente[nomeDia]);
+  }
+  return calcHorasDia(expediente);
+};
+
+// Total horas semanais
+const calcHorasSemanais = (expediente) => {
+  if (!expediente) return 35;
+  if (expediente.segunda !== undefined) {
+    return ["segunda","terca","quarta","quinta","sexta","sabado"]
+      .reduce((a, d) => a + calcHorasDiaSemana(expediente[d]), 0);
+  }
+  return calcHorasDia(expediente) * 5;
+};
+
+// Expediente padrão por dia da semana (7h/dia seg-sex)
+const expedientePadrao = () => ({
+  segunda: { ativo:true,  turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true, inicio:"14:00",fim:"18:00"} },
+  terca:   { ativo:true,  turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true, inicio:"14:00",fim:"18:00"} },
+  quarta:  { ativo:true,  turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true, inicio:"14:00",fim:"18:00"} },
+  quinta:  { ativo:true,  turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true, inicio:"14:00",fim:"18:00"} },
+  sexta:   { ativo:true,  turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:true, inicio:"14:00",fim:"18:00"} },
+  sabado:  { ativo:false, turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:false,inicio:"14:00",fim:"18:00"} },
+  domingo: { ativo:false, turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:false,inicio:"14:00",fim:"18:00"} },
+});
+
 // Verifica se uma hora está dentro do expediente do colaborador
 // Retorna { eHoraExtra: bool, minutosExtras: number }
-const verificarHoraExtra = (horaInicio, horaFim, expediente) => {
+const verificarHoraExtra = (horaInicio, horaFim, expediente, dataISO) => {
   if (!horaInicio || !horaFim || !expediente) return { eHoraExtra: false, minutosExtras: 0 };
-  const ini = horaMin(horaInicio);
-  const fim = horaMin(horaFim);
+  const ini      = horaMin(horaInicio);
+  const fim      = horaMin(horaFim);
   const durTotal = Math.max(0, fim - ini);
 
-  const turnos = [];
-  if (expediente.turno1?.inicio && expediente.turno1?.fim) {
-    turnos.push({ ini: horaMin(expediente.turno1.inicio), fim: horaMin(expediente.turno1.fim) });
-  }
-  if (expediente.turno2?.ativo && expediente.turno2?.inicio && expediente.turno2?.fim) {
-    turnos.push({ ini: horaMin(expediente.turno2.inicio), fim: horaMin(expediente.turno2.fim) });
-  }
-  // Formato antigo
-  if (turnos.length === 0 && expediente.inicio && expediente.fim) {
-    turnos.push({ ini: horaMin(expediente.inicio), fim: horaMin(expediente.fim) });
+  // Pega turnos do dia correto
+  let turnos = [];
+  if (expediente.segunda !== undefined) {
+    const dow    = dataISO ? new Date(dataISO+"T12:00:00").getDay() : new Date().getDay();
+    const nomeDia = DIAS_SEMANA[dow];
+    const diaExp  = expediente[nomeDia];
+    if (diaExp?.ativo) {
+      if (diaExp.turno1?.inicio && diaExp.turno1?.fim)
+        turnos.push({ ini: horaMin(diaExp.turno1.inicio), fim: horaMin(diaExp.turno1.fim) });
+      if (diaExp.turno2?.ativo && diaExp.turno2?.inicio && diaExp.turno2?.fim)
+        turnos.push({ ini: horaMin(diaExp.turno2.inicio), fim: horaMin(diaExp.turno2.fim) });
+    }
+  } else {
+    if (expediente.turno1?.inicio && expediente.turno1?.fim)
+      turnos.push({ ini: horaMin(expediente.turno1.inicio), fim: horaMin(expediente.turno1.fim) });
+    if (expediente.turno2?.ativo && expediente.turno2?.inicio && expediente.turno2?.fim)
+      turnos.push({ ini: horaMin(expediente.turno2.inicio), fim: horaMin(expediente.turno2.fim) });
+    if (turnos.length === 0 && expediente.inicio && expediente.fim)
+      turnos.push({ ini: horaMin(expediente.inicio), fim: horaMin(expediente.fim) });
   }
 
-  // Calcula minutos dentro do expediente
+  // Se não há expediente no dia (ex: sábado) tudo é hora extra
+  if (turnos.length === 0) return { eHoraExtra: true, minutosExtras: durTotal };
+
   let minDentro = 0;
   for (const t of turnos) {
     const sobreposIni = Math.max(ini, t.ini);
@@ -133,13 +199,23 @@ const labelModoExpediente = (expediente) => {
   return expediente.modo === "OU" ? "Manhã OU Tarde (1 turno/dia)" : "Manhã E Tarde (2 turnos/dia)";
 };
 
-// Retorna hora de fim do último turno ativo (para auto-encerramento)
-// No modo OU, usa o turno mais tarde do dia como referência
+// Retorna hora de fim do expediente do dia atual
 const fimExpediente = (expediente) => {
   if (!expediente) return "18:00";
+  // Formato novo por dia da semana
+  if (expediente.segunda !== undefined) {
+    const dow = new Date().getDay();
+    const nomeDia = DIAS_SEMANA[dow];
+    const diaExp = expediente[nomeDia];
+    if (!diaExp?.ativo) return "18:00";
+    const f1 = diaExp.turno1?.fim || "18:00";
+    const f2 = diaExp.turno2?.ativo ? (diaExp.turno2?.fim || "18:00") : "00:00";
+    return diaExp.turno2?.ativo && f2 > f1 ? f2 : f1;
+  }
+  // Legado
   const f1 = expediente.turno1?.fim || expediente.fim || "18:00";
   const f2 = expediente.turno2?.ativo ? (expediente.turno2?.fim || "18:00") : "00:00";
-  if (expediente.turno2?.ativo) return f2 > f1 ? f2 : f1; // sempre o mais tarde
+  if (expediente.turno2?.ativo) return f2 > f1 ? f2 : f1;
   return f1;
 };
 
@@ -1599,7 +1675,7 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
   const [lista,setLista]=useState(usuarios);
   const [editId,setEditId]=useState(null);
   const [showForm,setShowForm]=useState(false);
-  const VAZIO={id:"",nome:"",email:"",senha:"",salario:0,perfil:"colaborador",cor:"#2563a8",iniciais:"",ativo:true,expediente:{turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:true,inicio:"14:00",fim:"18:00"},modo:"E"},especialidades:[]};
+  const VAZIO={id:"",nome:"",email:"",senha:"",salario:0,perfil:"colaborador",cor:"#2563a8",iniciais:"",ativo:true,expediente:expedientePadrao(),especialidades:[]};
   const [form,setForm]=useState(VAZIO);
   const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
   const se=(k,v)=>setForm(f=>({...f,expediente:{...f.expediente,[k]:v}}));
@@ -1706,77 +1782,49 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
               <Inp label="Senha *" value={form.senha} onChange={v=>sf("senha",v)} type="password"/>
               <Inp label="Salario Mensal (R$)" value={form.salario||""} onChange={v=>sf("salario",parseFloat(v)||0)} type="number" placeholder="Ex: 3500"/>
               <Sel label="Perfil" value={form.perfil} onChange={v=>sf("perfil",v)} options={[{value:"colaborador",label:"👤 Colaborador"},{value:"gestor",label:"🔑 Gestor"},{value:"admin",label:"👑 Admin"}]}/>
-              {/* Turno 1 */}
+              {/* Expediente por dia da semana */}
               <div style={{gridColumn:"1/-1"}}>
-                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:8}}>
-                  Turno 1 (obrigatório)
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:4}}>
+                  Horário por Dia da Semana
                   <span style={{fontSize:11,color:C.cinzaClaro,fontWeight:400,marginLeft:8}}>
-                    {form.expediente?.turno1?.inicio&&form.expediente?.turno1?.fim
-                      ? `${Math.max(0,(horaMin(form.expediente.turno1.fim)-horaMin(form.expediente.turno1.inicio))/60).toFixed(1)}h`
-                      : ""}
+                    Total: {calcHorasSemanais(form.expediente)}h/semana • {calcHorasDia(form.expediente)}h/dia (média)
                   </span>
                 </label>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  <Inp label="Entrada" value={form.expediente?.turno1?.inicio||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno1:{...f.expediente?.turno1,inicio:v}}}))} type="time"/>
-                  <Inp label="Saída" value={form.expediente?.turno1?.fim||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno1:{...f.expediente?.turno1,fim:v}}}))} type="time"/>
-                </div>
-              </div>
-              {/* Turno 2 */}
-              <div style={{gridColumn:"1/-1"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"10px 14px",background:form.expediente?.turno2?.ativo?"#eff6ff":"#f8fafc",borderRadius:8,border:`1px solid ${form.expediente?.turno2?.ativo?C.azulClaro:C.cinzaCard}`}}>
-                  <input type="checkbox" checked={!!form.expediente?.turno2?.ativo}
-                    onChange={e=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,ativo:e.target.checked}}}))}
-                    id="t2ativo" style={{cursor:"pointer",width:15,height:15}}/>
-                  <label htmlFor="t2ativo" style={{fontSize:13,fontWeight:600,cursor:"pointer",color:form.expediente?.turno2?.ativo?C.azulMedio:C.cinzaClaro}}>
-                    {form.expediente?.turno2?.ativo?"✓ Turno 2 cadastrado":"+ Adicionar Turno 2"}
-                  </label>
-                  {form.expediente?.turno2?.ativo&&(
-                    <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:C.azulEscuro}}>
-                      Total: {calcHorasDia(form.expediente)}h/dia
-                    </span>
-                  )}
-                </div>
-
-                {form.expediente?.turno2?.ativo&&(<>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-                    <Inp label="Entrada turno 2" value={form.expediente?.turno2?.inicio||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,inicio:v}}}))} type="time"/>
-                    <Inp label="Saída turno 2" value={form.expediente?.turno2?.fim||""} onChange={v=>setForm(f=>({...f,expediente:{...f.expediente,turno2:{...f.expediente?.turno2,fim:v}}}))} type="time"/>
-                  </div>
-
-                  {/* Modo E/OU */}
-                  <div style={{padding:"12px 14px",background:"#f0f4f8",borderRadius:10,border:`1px solid ${C.cinzaCard}`}}>
-                    <div style={{fontSize:12,fontWeight:700,color:C.cinzaEscuro,marginBottom:10}}>
-                      Como este colaborador trabalha?
-                    </div>
-                    <div style={{display:"flex",gap:10}}>
-                      {[
-                        { val:"E",  titulo:"Manhã E Tarde",    sub:"Trabalha os 2 turnos todo dia",      icone:"🔁" },
-                        { val:"OU", titulo:"Manhã OU Tarde",   sub:"Trabalha só 1 turno por dia (flexível)", icone:"🔀" },
-                      ].map(opt=>{
-                        const ativo = (form.expediente?.modo||"E") === opt.val;
-                        return (
-                          <div key={opt.val} onClick={()=>setForm(f=>({...f,expediente:{...f.expediente,modo:opt.val}}))}
-                            style={{flex:1,padding:"10px 14px",borderRadius:10,border:`2px solid ${ativo?C.azulMedio:C.cinzaCard}`,background:ativo?C.azulEscuro:"white",cursor:"pointer",transition:"all 0.15s"}}>
-                            <div style={{fontSize:18,marginBottom:4}}>{opt.icone}</div>
-                            <div style={{fontSize:13,fontWeight:700,color:ativo?C.branco:C.cinzaEscuro}}>{opt.titulo}</div>
-                            <div style={{fontSize:11,color:ativo?"rgba(255,255,255,0.7)":C.cinzaClaro,marginTop:2}}>{opt.sub}</div>
-                            {ativo&&opt.val==="E"&&<div style={{fontSize:11,color:C.ciano,marginTop:4,fontWeight:700}}>{calcHorasDia(form.expediente)}h/dia contabilizadas</div>}
-                            {ativo&&opt.val==="OU"&&<div style={{fontSize:11,color:C.ciano,marginTop:4,fontWeight:700}}>{Math.max(
-                              form.expediente?.turno1?.inicio&&form.expediente?.turno1?.fim ? Math.max(0,(horaMin(form.expediente.turno1.fim)-horaMin(form.expediente.turno1.inicio))/60) : 0,
-                              form.expediente?.turno2?.inicio&&form.expediente?.turno2?.fim ? Math.max(0,(horaMin(form.expediente.turno2.fim)-horaMin(form.expediente.turno2.inicio))/60) : 0
-                            ).toFixed(1)}h/dia contabilizadas</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {["segunda","terca","quarta","quinta","sexta","sabado","domingo"].map((dia,idx)=>{
+                    const exp = form.expediente?.[dia] || {ativo:false,turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:false,inicio:"14:00",fim:"18:00"}};
+                    const setDia = (campo,val) => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,[campo]:val}}}));
+                    const setT1  = (campo,val) => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,turno1:{...exp.turno1,[campo]:val}}}}));
+                    const setT2  = (campo,val) => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,turno2:{...exp.turno2,[campo]:val}}}}));
+                    const hDia   = calcHorasDiaSemana(exp);
+                    return (
+                      <div key={dia} style={{border:`1.5px solid ${exp.ativo?C.azulClaro:C.cinzaCard}`,borderRadius:10,padding:"10px 14px",background:exp.ativo?"#f0f9ff":"#f8fafc",transition:"all 0.15s"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:exp.ativo?10:0}}>
+                          <input type="checkbox" checked={!!exp.ativo} onChange={e=>setDia("ativo",e.target.checked)} style={{width:15,height:15,cursor:"pointer"}}/>
+                          <span style={{fontSize:13,fontWeight:700,color:exp.ativo?C.azulMedio:C.cinzaClaro,minWidth:70}}>{DIAS_LABEL[idx]}</span>
+                          {exp.ativo&&<span style={{fontSize:11,color:C.verde,fontWeight:700}}>{hDia}h</span>}
+                          {!exp.ativo&&<span style={{fontSize:11,color:C.cinzaClaro}}>Não trabalha</span>}
+                        </div>
+                        {exp.ativo&&(
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,alignItems:"end"}}>
+                            <Inp label="Manhã entrada" value={exp.turno1?.inicio||""} onChange={v=>setT1("inicio",v)} type="time"/>
+                            <Inp label="Manhã saída"   value={exp.turno1?.fim||""}   onChange={v=>setT1("fim",v)}   type="time"/>
+                            <div>
+                              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                                <input type="checkbox" checked={!!exp.turno2?.ativo} onChange={e=>setT2("ativo",e.target.checked)} style={{cursor:"pointer"}}/>
+                                <label style={{fontSize:11,color:C.cinzaEscuro,cursor:"pointer",fontWeight:600}}>Tarde</label>
+                              </div>
+                              <Inp label="" value={exp.turno2?.inicio||""} onChange={v=>setT2("inicio",v)} type="time" readOnly={!exp.turno2?.ativo}/>
+                            </div>
+                            <Inp label="Tarde saída" value={exp.turno2?.fim||""} onChange={v=>setT2("fim",v)} type="time" readOnly={!exp.turno2?.ativo}/>
                           </div>
-                        );
-                      })}
-                    </div>
-                    {(form.expediente?.modo||"E")==="OU"&&(
-                      <div style={{marginTop:10,padding:"8px 12px",background:"#fffbeb",borderRadius:8,border:"1px solid #fde68a",fontSize:12,color:"#92400e"}}>
-                        ℹ️ O sistema aceita registro em qualquer um dos 2 turnos, mas conta apenas 1 turno por dia na meta de produtividade.
+                        )}
                       </div>
-                    )}
-                  </div>
-                </>)}
+                    );
+                  })}
+                </div>
               </div>
+
               <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro,display:"block",marginBottom:6}}>Cor do avatar</label>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1907,7 +1955,85 @@ function PainelDrive({drive,projetosExistentes,onImportar}){
 
 // ─── MODAL PROJETO ─────────────────────────────────────────────────────────────
 function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
-  const [form,setForm]=useState(projeto||{id:"",codigo:"",cliente:"",responsavel:"",coresponsavel:"",ano:new Date().getFullYear(),tipo:"PE",status:"Novo/Definir",prazo:60,dataContrato:"",dataEntregaPrevista:"",obs:"",temContrato:false,parcelas:[],driveUrl:""});
+  const [form,setForm]=useState(projeto||{id:"",codigo:"",cliente:"",responsavel:"",coresponsavel:"",coresponsavel2:"",coresponsavel3:"",ano:new Date().getFullYear(),tipo:"PE",status:"Novo/Definir",prazo:0,dataContrato:"",dataEntregaPrevista:"",dataEntregaReal:"",obs:"",temContrato:false,parcelas:[],driveUrl:""});
+  const [abaModal, setAbaModal] = useState("info"); // info | financeiro | portal
+  const [atualizacoes, setAtualizacoes] = useState([]);
+  const [carregandoAtu, setCarregandoAtu] = useState(false);
+  const [novaAtu, setNovaAtu] = useState({ titulo:"", descricao:"", icone:"📝", tipo:"manual", visivelCliente:true });
+  const [gerandoLink, setGerandoLink] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  // Carregar atualizações ao abrir projeto existente
+  useEffect(() => {
+    if (modo !== "editar" || !projeto?.id) return;
+    setCarregandoAtu(true);
+    portal.listarAtualizacoes(projeto.id)
+      .then(setAtualizacoes)
+      .catch(()=>{})
+      .finally(()=>setCarregandoAtu(false));
+  }, [projeto?.id]);
+
+  const gerarLink = async () => {
+    if (!form.id) return;
+    setGerandoLink(true);
+    try {
+      const token = await portal.gerarToken(form.id);
+      setForm(f=>({...f, tokenCliente:token, linkClienteAtivo:true}));
+    } catch(e){ console.error(e); }
+    finally{ setGerandoLink(false); }
+  };
+
+  const toggleLink = async (ativo) => {
+    if (!form.id) return;
+    await portal.setLinkAtivo(form.id, ativo);
+    setForm(f=>({...f, linkClienteAtivo:ativo}));
+  };
+
+  const adicionarAtu = async () => {
+    if (!novaAtu.titulo || !form.id) return;
+    const atu = await portal.adicionarAtualizacao(form.id, {
+      ...novaAtu, autorId: null, autorNome: "Equipe INTEC"
+    });
+    setAtualizacoes(a=>[atu,...a]);
+    setNovaAtu({ titulo:"", descricao:"", icone:"📝", tipo:"manual", visivelCliente:true });
+  };
+
+  const excluirAtu = async (id) => {
+    if (!window.confirm("Excluir esta atualização?")) return;
+    await portal.excluirAtualizacao(id);
+    setAtualizacoes(a=>a.filter(x=>x.id!==id));
+  };
+
+  const copiarLink = () => {
+    const url = `${window.location.origin}/cliente/${form.tokenCliente||form.token_cliente}`;
+    navigator.clipboard.writeText(url);
+    setCopiado(true); setTimeout(()=>setCopiado(false),2000);
+  };
+
+  const ICONES_ATU = ["📝","✅","⚠️","🔄","📐","🏗️","🔍","📦","⏸️","▶️","📞","💬","🎯","⚡"];
+
+  // Calcula data de entrega prevista automaticamente ao mudar contrato ou prazo
+  const calcularEntregaPrevista = (dataContrato, prazo) => {
+    if (!dataContrato || !prazo || prazo <= 0) return "";
+    const d = new Date(dataContrato + "T12:00:00");
+    let diasUteis = 0;
+    while (diasUteis < prazo) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) diasUteis++;
+    }
+    return d.toISOString().slice(0,10);
+  };
+
+  const setContrato = (v) => {
+    const nova = calcularEntregaPrevista(v, form.prazo);
+    setForm(f=>({...f, dataContrato:v, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
+  };
+  const setPrazo = (v) => {
+    const p = parseInt(v)||0;
+    const nova = calcularEntregaPrevista(form.dataContrato, p);
+    setForm(f=>({...f, prazo:p, dataEntregaPrevista: nova || f.dataEntregaPrevista}));
+  };
   const [np,setNp]=useState({desc:"",valor:"",pago:false});
   const s=(k,v)=>setForm(f=>({...f,[k]:v}));
   const addP=()=>{if(!np.desc||!np.valor)return;s("parcelas",[...(form.parcelas||[]),{...np,valor:parseFloat(np.valor)}]);setNp({desc:"",valor:"",pago:false});};
@@ -1922,7 +2048,18 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           <div><div style={{color:C.ciano,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:4}}>INTEC ENGENHARIA INTEGRADA</div><h2 style={{color:C.branco,margin:0,fontSize:18}}>{modo==="novo"?"Novo Projeto":"Editar Projeto"}</h2></div>
           <button onClick={onClose} style={{background:"rgba(255,255,255,0.15)",border:"none",color:C.branco,borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
+        {/* Sub-abas do modal */}
+        <div style={{display:"flex",gap:0,borderBottom:`2px solid ${C.cinzaCard}`}}>
+          {[{id:"info",label:"📋 Projeto"},{id:"financeiro",label:"💰 Financeiro"},{id:"portal",label:"🔗 Portal Cliente"}].map(t=>(
+            <button key={t.id} onClick={()=>setAbaModal(t.id)} style={{background:"none",border:"none",padding:"12px 18px",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:abaModal===t.id?700:500,color:abaModal===t.id?C.azulMedio:C.cinzaClaro,borderBottom:abaModal===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",marginBottom:-2,transition:"all 0.15s"}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <div style={{padding:24,display:"flex",flexDirection:"column",gap:20}}>
+        {/* ─── ABA INFO ─── */}
+        {abaModal==="info" && <>
           <div>
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>📁 Identificação</h3>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -1931,7 +2068,11 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               <div style={{gridColumn:"1/-1"}}><Inp label={`Cliente / Projeto *${form._doDrive?" (importado do Drive — não editável)":""}`} value={form.cliente} onChange={v=>s("cliente",v)} required readOnly={!!form._doDrive}/></div>
               <Sel label="Responsável" value={form.responsavel} onChange={v=>s("responsavel",v)}
                 options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-              <Sel label="Co-responsável" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
+              <Sel label="Co-responsável 1" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
+                options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+              <Sel label="Co-responsável 2" value={form.coresponsavel2||""} onChange={v=>s("coresponsavel2",v)}
+                options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+              <Sel label="Co-responsável 3" value={form.coresponsavel3||""} onChange={v=>s("coresponsavel3",v)}
                 options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
               {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Ano</label><input value={form.ano} readOnly style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/></div> : <Sel label="Ano" value={form.ano} onChange={v=>s("ano",parseInt(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:y}))}/>}
               <Sel label="Status" value={form.status} onChange={v=>s("status",v)} options={Object.keys(STATUS_CONFIG).map(k=>({value:k,label:k}))}/>
@@ -1944,13 +2085,51 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               <label htmlFor="tc" style={{fontSize:13,fontWeight:600,color:form.temContrato?"#166534":"#92400e",cursor:"pointer"}}>{form.temContrato?"✓ Contrato assinado":"⚠ Sem contrato formalizado"}</label>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-              <Inp label="Data do Contrato" value={form.dataContrato} onChange={v=>s("dataContrato",v)} type="date"/>
-              <Inp label="Prazo (Dias Úteis)" value={form.prazo} onChange={v=>s("prazo",parseInt(v)||0)} type="number"/>
-              <Inp label="Entrega Prevista" value={form.dataEntregaPrevista} onChange={v=>s("dataEntregaPrevista",v)} type="date"/>
+              <Inp label="Data do Contrato" value={form.dataContrato} onChange={setContrato} type="date"/>
+              <Inp label="Prazo (Dias Úteis)" value={form.prazo||""} onChange={setPrazo} type="number" placeholder="Ex: 60"/>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>
+                  Entrega Prevista
+                  {form.dataContrato&&form.prazo>0&&<span style={{fontSize:10,color:C.verde,marginLeft:6}}>✓ calculada automaticamente</span>}
+                </label>
+                <input type="date" value={form.dataEntregaPrevista} onChange={e=>s("dataEntregaPrevista",e.target.value)}
+                  style={{border:`1.5px solid ${form.dataContrato&&form.prazo>0?C.verde:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:form.dataContrato&&form.prazo>0?"#f0fdf4":C.branco,width:"100%",boxSizing:"border-box"}}/>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>
+                  Entrega Real
+                  {form.dataEntregaReal&&form.dataEntregaPrevista&&(
+                    <span style={{fontSize:10,marginLeft:6,color:form.dataEntregaReal<=form.dataEntregaPrevista?C.verde:C.vermelho,fontWeight:700}}>
+                      {form.dataEntregaReal<=form.dataEntregaPrevista?"✓ No prazo":"⚠ Atrasado"}
+                    </span>
+                  )}
+                </label>
+                <input type="date" value={form.dataEntregaReal||""} onChange={e=>s("dataEntregaReal",e.target.value)}
+                  style={{border:`1.5px solid ${form.dataEntregaReal?(form.dataEntregaReal<=form.dataEntregaPrevista?C.verde:C.vermelho):C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:C.branco,width:"100%",boxSizing:"border-box"}}/>
+              </div>
             </div>
           </div>
+
           <div>
-            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>💰 Financeiro</h3>
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Obs</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Observações</label>
+                <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
+            {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
+            <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn></div>
+          </div>
+        </>}
+
+        {/* ─── ABA FINANCEIRO ─── */}
+        {abaModal==="financeiro" && <>
+          <div>
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>💰 Financeiro — Parcelas</h3>
             {(form.parcelas||[]).length>0&&(
               <div style={{marginBottom:12,display:"flex",flexDirection:"column",gap:6}}>
                 {form.parcelas.map((p,i)=>(
@@ -1978,20 +2157,126 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               <Btn onClick={addP} small>+ Add</Btn>
             </div>
           </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
+            <Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn>
+          </div>
+        </>}
+
+        {/* ─── ABA PORTAL CLIENTE ─── */}
+        {abaModal==="portal" && <>
           <div>
-            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Obs</h3>
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 4px",textTransform:"uppercase",letterSpacing:1}}>🔗 Portal do Cliente</h3>
+            <p style={{color:C.cinzaClaro,fontSize:12,margin:"0 0 16px"}}>Gere um link exclusivo para o cliente acompanhar o projeto em tempo real, sem precisar de login.</p>
+
+            {/* Gerar/copiar link */}
+            {!form.tokenCliente && !form.token_cliente ? (
+              <div style={{padding:"20px",background:C.cinzaFundo,borderRadius:12,textAlign:"center"}}>
+                <div style={{fontSize:32,marginBottom:8}}>🔒</div>
+                <div style={{fontSize:14,fontWeight:600,color:C.cinzaEscuro,marginBottom:4}}>Link não gerado</div>
+                <div style={{fontSize:12,color:C.cinzaClaro,marginBottom:16}}>Clique para gerar um link exclusivo para este projeto</div>
+                <Btn onClick={gerarLink} disabled={gerandoLink||modo==="novo"}>
+                  {gerandoLink?"⏳ Gerando...":"🔑 Gerar Link do Cliente"}
+                </Btn>
+                {modo==="novo"&&<div style={{fontSize:11,color:C.cinzaClaro,marginTop:8}}>Salve o projeto primeiro para gerar o link</div>}
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {/* Status do link */}
+                <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:(form.linkClienteAtivo||form.link_cliente_ativo)?"#f0fdf4":"#fef2f2",borderRadius:10,border:`1px solid ${(form.linkClienteAtivo||form.link_cliente_ativo)?"#86efac":"#fecaca"}`}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",background:(form.linkClienteAtivo||form.link_cliente_ativo)?C.verde:C.vermelho}}/>
+                  <span style={{fontSize:13,fontWeight:700,color:(form.linkClienteAtivo||form.link_cliente_ativo)?"#166534":"#991b1b"}}>
+                    {(form.linkClienteAtivo||form.link_cliente_ativo)?"Link ativo — cliente pode acessar":"Link desativado — cliente não consegue acessar"}
+                  </span>
+                  <Btn onClick={()=>toggleLink(!(form.linkClienteAtivo||form.link_cliente_ativo))} small variant={(form.linkClienteAtivo||form.link_cliente_ativo)?"danger":"verde"} style={{marginLeft:"auto"}}>
+                    {(form.linkClienteAtivo||form.link_cliente_ativo)?"Desativar":"Ativar"}
+                  </Btn>
+                </div>
+                {/* URL */}
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <input readOnly value={`${window.location.origin}/cliente/${form.tokenCliente||form.token_cliente}`}
+                    style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontFamily:"monospace",color:C.azulMedio,background:"#f8fafc"}}/>
+                  <Btn onClick={copiarLink} variant={copiado?"verde":"secondary"} small>
+                    {copiado?"✓ Copiado!":"📋 Copiar"}
+                  </Btn>
+                  <a href={`${window.location.origin}/cliente/${form.tokenCliente||form.token_cliente}`} target="_blank" rel="noreferrer">
+                    <Btn variant="ghost" small>↗ Abrir</Btn>
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Progresso e obs do cliente */}
+            <div style={{marginTop:20,display:"flex",flexDirection:"column",gap:12}}>
+              <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>📊 Progresso & Mensagem ao Cliente</h3>
+              <div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Progresso do projeto</label>
+                  <span style={{fontSize:13,fontWeight:800,color:C.azulMedio}}>{form.progresso||0}%</span>
+                </div>
+                <input type="range" min="0" max="100" step="5" value={form.progresso||0} onChange={e=>s("progresso",parseInt(e.target.value))}
+                  style={{width:"100%",accentColor:C.azulMedio}}/>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.cinzaClaro,marginTop:2}}>
+                  <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                </div>
+              </div>
               <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Observações</label>
-                <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Mensagem visível ao cliente</label>
+                <textarea value={form.obsCliente||form.obs_cliente||""} onChange={e=>s("obsCliente",e.target.value)} rows={2}
+                  placeholder="Ex: Aguardando aprovação das plantas pelo cliente..." 
+                  style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+
+            {/* Atualizações */}
+            <div style={{marginTop:20}}>
+              <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🕐 Linha do Tempo</h3>
+              {/* Nova atualização */}
+              <div style={{background:C.cinzaFundo,borderRadius:10,padding:14,marginBottom:14}}>
+                <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:8,marginBottom:8}}>
+                  <select value={novaAtu.icone} onChange={e=>setNovaAtu(n=>({...n,icone:e.target.value}))}
+                    style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"6px 8px",fontSize:18,cursor:"pointer",background:"white"}}>
+                    {ICONES_ATU.map(ic=><option key={ic} value={ic}>{ic}</option>)}
+                  </select>
+                  <Inp label="" value={novaAtu.titulo} onChange={v=>setNovaAtu(n=>({...n,titulo:v}))} placeholder="Título da atualização (ex: Modelagem estrutural iniciada)"/>
+                </div>
+                <textarea value={novaAtu.descricao} onChange={e=>setNovaAtu(n=>({...n,descricao:e.target.value}))} rows={2}
+                  placeholder="Descrição detalhada (opcional)..."
+                  style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box",marginBottom:8}}/>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <input type="checkbox" checked={novaAtu.visivelCliente} onChange={e=>setNovaAtu(n=>({...n,visivelCliente:e.target.checked}))} id="vc" style={{cursor:"pointer"}}/>
+                    <label htmlFor="vc" style={{fontSize:12,cursor:"pointer",color:C.cinzaClaro}}>Visível ao cliente</label>
+                  </div>
+                  <Btn onClick={adicionarAtu} small disabled={!novaAtu.titulo}>+ Adicionar</Btn>
+                </div>
+              </div>
+
+              {/* Lista de atualizações */}
+              {carregandoAtu && <div style={{textAlign:"center",color:C.cinzaClaro,padding:16}}>⏳ Carregando...</div>}
+              {!carregandoAtu && atualizacoes.length===0 && <div style={{textAlign:"center",color:C.cinzaClaro,padding:16,fontSize:12}}>Nenhuma atualização ainda. Adicione a primeira acima!</div>}
+              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
+                {atualizacoes.map(a=>(
+                  <div key={a.id} style={{display:"flex",gap:10,padding:"10px 12px",background:a.visivel_cliente?"#f0f9ff":"#f8fafc",borderRadius:8,border:`1px solid ${a.visivel_cliente?C.azulClaro:C.cinzaCard}`,opacity:a.visivel_cliente?1:0.6}}>
+                    <span style={{fontSize:20,flexShrink:0}}>{a.icone||"📝"}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:C.cinzaEscuro}}>{a.titulo}</div>
+                      {a.descricao&&<div style={{fontSize:12,color:C.cinzaClaro,marginTop:2}}>{a.descricao}</div>}
+                      <div style={{fontSize:11,color:C.cinzaClaro,marginTop:4}}>
+                        {a.autor_nome&&<span>👤 {a.autor_nome} · </span>}
+                        {new Date(a.created_at).toLocaleDateString("pt-BR")}
+                        {!a.visivel_cliente&&<span style={{marginLeft:8,color:C.amarelo}}>👁 Oculto ao cliente</span>}
+                      </div>
+                    </div>
+                    <button onClick={()=>excluirAtu(a.id)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px",flexShrink:0}}>🗑</button>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-          <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
-            {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
-            <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn></div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
+            <Btn variant="ghost" onClick={onClose}>Fechar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar Projeto</Btn>
           </div>
+        </>}
         </div>
       </div>
     </div>
@@ -2154,6 +2439,129 @@ function PainelAlertas({projetos, onAbrirProjeto}) {
   );
 }
 
+
+// ─── PAINEL DE ENTREGAS ────────────────────────────────────────────────────────
+function PainelEntregas({ projetos, onAbrirProjeto }) {
+  const [filtro, setFiltro] = useState("todos");
+
+  const comEntregaPrevista = projetos.filter(p => p.dataEntregaPrevista);
+  const comEntregaReal     = comEntregaPrevista.filter(p => p.dataEntregaReal);
+  const semEntregaReal     = comEntregaPrevista.filter(p => !p.dataEntregaReal && !["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
+
+  // Projetos com entrega real preenchida — comparar com prevista
+  const noPrazo    = comEntregaReal.filter(p => p.dataEntregaReal <= p.dataEntregaPrevista);
+  const atrasados  = comEntregaReal.filter(p => p.dataEntregaReal >  p.dataEntregaPrevista);
+
+  // Projetos sem entrega real mas com prazo vencido
+  const vencidoSemEntrega = semEntregaReal.filter(p => {
+    const dias = Math.ceil((new Date(p.dataEntregaPrevista) - new Date()) / 86400000);
+    return dias < 0;
+  });
+
+  const diasAtraso = (p) => {
+    if (!p.dataEntregaReal || !p.dataEntregaPrevista) return 0;
+    return Math.ceil((new Date(p.dataEntregaReal) - new Date(p.dataEntregaPrevista)) / 86400000);
+  };
+
+  const filtros = [
+    { id:"todos",    label:"Todos",           valor:comEntregaPrevista.length, cor:C.azulMedio },
+    { id:"noPrazo",  label:"✓ No Prazo",      valor:noPrazo.length,           cor:C.verde     },
+    { id:"atrasado", label:"⚠ Atrasado",      valor:atrasados.length,         cor:C.vermelho  },
+    { id:"pendente", label:"⏳ Aguardando",   valor:semEntregaReal.length,    cor:C.amarelo   },
+    { id:"vencido",  label:"🔴 Vencido s/ registro", valor:vencidoSemEntrega.length, cor:"#9333ea" },
+  ];
+
+  const listaFiltrada = (() => {
+    switch(filtro) {
+      case "noPrazo":  return noPrazo;
+      case "atrasado": return atrasados;
+      case "pendente": return semEntregaReal;
+      case "vencido":  return vencidoSemEntrega;
+      default:         return comEntregaPrevista;
+    }
+  })();
+
+  // Taxa de entrega no prazo
+  const taxa = comEntregaReal.length > 0 ? Math.round((noPrazo.length / comEntregaReal.length) * 100) : null;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+        {filtros.map(f=>(
+          <div key={f.id} onClick={()=>setFiltro(f.id)}
+            style={{padding:"14px",borderRadius:10,background:filtro===f.id?f.cor:"white",border:`2px solid ${filtro===f.id?f.cor:C.cinzaCard}`,cursor:"pointer",textAlign:"center",transition:"all 0.2s",boxShadow:filtro===f.id?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
+            <div style={{fontSize:28,fontWeight:900,color:filtro===f.id?"white":f.cor,lineHeight:1}}>{f.valor}</div>
+            <div style={{fontSize:11,color:filtro===f.id?"rgba(255,255,255,0.85)":C.cinzaClaro,fontWeight:600,marginTop:4}}>{f.label}</div>
+          </div>
+        ))}
+        {taxa !== null && (
+          <div style={{padding:"14px",borderRadius:10,background:taxa>=80?C.verde:taxa>=50?C.amarelo:C.vermelho,textAlign:"center"}}>
+            <div style={{fontSize:28,fontWeight:900,color:"white",lineHeight:1}}>{taxa}%</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.85)",fontWeight:600,marginTop:4}}>Taxa no Prazo</div>
+          </div>
+        )}
+      </div>
+
+      {/* Tabela */}
+      <Card style={{padding:0,overflow:"hidden"}}>
+        <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.cinzaCard}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>
+            📦 Registro de Entregas ({listaFiltrada.length})
+          </h3>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead>
+              <tr style={{background:C.azulEscuro}}>
+                {["Código","Projeto","Responsável","Entrega Prevista","Entrega Real","Resultado","Dias"].map(h=>(
+                  <th key={h} style={{padding:"10px 14px",color:C.ciano,textAlign:"left",fontWeight:700,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {listaFiltrada.length === 0 && (
+                <tr><td colSpan={7} style={{padding:"24px",textAlign:"center",color:C.cinzaClaro}}>Nenhum projeto nesta categoria.</td></tr>
+              )}
+              {listaFiltrada.sort((a,b)=>(a.dataEntregaPrevista||"").localeCompare(b.dataEntregaPrevista||"")).map((p,i)=>{
+                const atr  = diasAtraso(p);
+                const dias = p.dataEntregaPrevista ? Math.ceil((new Date(p.dataEntregaPrevista)-new Date())/86400000) : null;
+                let resultado, resCor, resBg;
+                if (p.dataEntregaReal) {
+                  if (atr <= 0)       { resultado="✓ No Prazo";    resCor=C.verde;    resBg="#f0fdf4"; }
+                  else                { resultado=`⚠ ${atr}d atraso`; resCor=C.vermelho; resBg="#fff5f5"; }
+                } else if (dias!==null && dias < 0) {
+                  resultado="🔴 Vencido"; resCor="#9333ea"; resBg="#faf5ff";
+                } else {
+                  resultado="⏳ Aguardando"; resCor=C.amarelo; resBg="#fffbeb";
+                }
+                return (
+                  <tr key={p.id} onClick={()=>onAbrirProjeto(p)}
+                    style={{borderBottom:`1px solid ${C.cinzaFundo}`,cursor:"pointer",background:i%2===0?C.branco:"#f8fafc"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="#e8f4fd"}
+                    onMouseLeave={e=>e.currentTarget.style.background=i%2===0?C.branco:"#f8fafc"}>
+                    <td style={{padding:"9px 14px",fontWeight:700,color:C.azulMedio}}>{p.codigo}</td>
+                    <td style={{padding:"9px 14px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.cliente}</td>
+                    <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{p.responsavel||"—"}</td>
+                    <td style={{padding:"9px 14px",color:C.cinzaClaro,whiteSpace:"nowrap"}}>{fmtData(p.dataEntregaPrevista)}</td>
+                    <td style={{padding:"9px 14px",color:p.dataEntregaReal?C.cinzaEscuro:C.cinzaClaro,whiteSpace:"nowrap"}}>{p.dataEntregaReal?fmtData(p.dataEntregaReal):"—"}</td>
+                    <td style={{padding:"9px 14px"}}>
+                      <span style={{background:resBg,color:resCor,padding:"2px 10px",borderRadius:20,fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{resultado}</span>
+                    </td>
+                    <td style={{padding:"9px 14px",fontSize:11,fontWeight:700,color:atr>0?C.vermelho:dias!==null&&dias<=3?C.laranja:C.cinzaClaro}}>
+                      {p.dataEntregaReal ? (atr>0?`+${atr}d`:atr===0?"Exato":`${Math.abs(atr)}d antes`) : (dias!==null?(dias<0?`${Math.abs(dias)}d vencido`:`${dias}d restantes`):"—")}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
   const [abaD,setAbaD] = useState("visao");
   const isColab = usuarioAtual?.perfil==="colaborador";
@@ -2168,14 +2576,19 @@ function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
   return(<div style={{display:"flex",flexDirection:"column",gap:20}}>
     {/* Sub-abas do Dashboard */}
     <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.cinzaCard}`,paddingBottom:0}}>
-      {[{id:"visao",label:"📊 Visão Geral"},{id:"alertas",label:`🔔 Alertas${totalAlertas>0?` (${totalAlertas})`:""}`}].map(t=>(
+      {[
+        {id:"visao",   label:"📊 Visão Geral"},
+        {id:"alertas", label:`🔔 Alertas${totalAlertas>0?` (${totalAlertas})`:""}`},
+        {id:"entregas",label:"📦 Entregas"},
+      ].map(t=>(
         <button key={t.id} onClick={()=>setAbaD(t.id)} style={{background:"none",border:"none",padding:"10px 18px",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:abaD===t.id?700:500,color:abaD===t.id?C.azulMedio:C.cinzaClaro,borderBottom:abaD===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",marginBottom:-2,transition:"all 0.15s"}}>
           {t.label}
         </button>
       ))}
     </div>
 
-    {abaD==="alertas" && <PainelAlertas projetos={projetos} onAbrirProjeto={onAbrirProjeto}/>}
+    {abaD==="alertas"   && <PainelAlertas projetos={projetos} onAbrirProjeto={onAbrirProjeto}/>}
+    {abaD==="entregas"  && <PainelEntregas projetos={projetos} onAbrirProjeto={onAbrirProjeto}/>}
 
     {abaD==="visao" && <>
       <PainelDrive drive={drive} projetosExistentes={projetos} onImportar={onImportar}/>
@@ -2337,6 +2750,20 @@ export default function App(){
         // 5+ minutos após o expediente sem resposta — encerra automaticamente
         if(encerrarRef.current) {
           encerrarRef.current(fim, "Encerrado automaticamente pelo sistema");
+          // Notificar colaborador e gestor por email
+          const uAtual = registrosRef.current.find(r => r.usuarioId === user.id && !r.horaFim);
+          if(uAtual) {
+            const proj = uAtual.projetoId
+              ? `Projeto ${uAtual.projetoId}`
+              : (uAtual.categoriaAdmin || "Atividade administrativa");
+            enviarEmail("encerramento_auto", {
+              colaborador: user.nome,
+              email: user.email,
+              projetoOuAtividade: proj,
+              horaInicio: uAtual.horaInicio,
+              horaFim: fim,
+            }).catch(()=>{});
+          }
         }
       }
     }, 30000); // verifica a cada 30 segundos
@@ -2347,13 +2774,17 @@ export default function App(){
 
   // ── Sessões ──
   const iniciar = async (projetoId, hi, obs, categoriaAdmin=null) => {
+    const dataHoje = new Date().toISOString().slice(0,10);
+    // Verifica se início já é fora do expediente
+    const uExp = usuarios.find(u2=>u2.id===user.id)?.expediente;
+    const { eHoraExtra } = verificarHoraExtra(hi, hi, uExp, dataHoje);
     const nova = {
       id: Date.now().toString(), usuarioId:user.id,
       projetoId: projetoId||null,
       categoriaAdmin: categoriaAdmin||null,
-      data: new Date().toISOString().slice(0,10),
+      data: dataHoje,
       horaInicio:hi, horaFim:null, duracaoMin:null,
-      minutosExtras:0, inicioTs:Date.now(), obs,
+      minutosExtras:0, foraDoExpediente: eHoraExtra, inicioTs:Date.now(), obs,
     };
     setRegistros(x => [...x, nova]);
     setModalH(null);
@@ -2366,7 +2797,7 @@ export default function App(){
       if(r.usuarioId===user.id && !r.horaFim){
         const dur = Math.max(0, horaMin(hf) - horaMin(r.horaInicio));
         const u   = usuarios.find(u2=>u2.id===r.usuarioId);
-        const {minutosExtras} = verificarHoraExtra(r.horaInicio, hf, u?.expediente);
+        const {minutosExtras} = verificarHoraExtra(r.horaInicio, hf, u?.expediente, r.data);
         sessaoId = r.id;
         return {...r, horaFim:hf, duracaoMin:dur, minutosExtras, obs:obs||r.obs};
       }
@@ -2378,7 +2809,7 @@ export default function App(){
       if(sessao) {
         const dur = Math.max(0, horaMin(hf) - horaMin(sessao.horaInicio));
         const u   = usuarios.find(u2=>u2.id===sessao.usuarioId);
-        const {minutosExtras} = verificarHoraExtra(sessao.horaInicio, hf, u?.expediente);
+        const {minutosExtras} = verificarHoraExtra(sessao.horaInicio, hf, u?.expediente, sessao.data);
         try { await db.sessoes.encerrar(sessaoId, hf, dur, obs||sessao.obs, minutosExtras); }
         catch(e){ console.error("Erro encerrar sessao:", e); }
       }
@@ -2387,6 +2818,46 @@ export default function App(){
 
   // Atualizar ref da função encerrar para o timer sempre usar a versão mais recente
   encerrarRef.current = encerrar;
+
+  // Verificação de projetos críticos (roda 1x ao logar e a cada 6h)
+  useEffect(() => {
+    if (!user || !["admin","gestor"].includes(user.perfil)) return;
+    const verificarCriticos = () => {
+      const criticos = projetos.filter(p => {
+        if (!p.dataEntregaPrevista) return false;
+        if (["CONCLUÍDO","CANCELADO"].includes(statusN(p.status))) return false;
+        const dias = Math.ceil((new Date(p.dataEntregaPrevista) - new Date()) / 86400000);
+        return dias <= 7 && dias >= -30;
+      });
+      if (criticos.length > 0) {
+        // Agrupa por responsável e envia email
+        const porResp = {};
+        criticos.forEach(p => {
+          const resp = p.responsavel || "—";
+          if (!porResp[resp]) porResp[resp] = [];
+          porResp[resp].push({
+            codigo: p.codigo,
+            cliente: p.cliente,
+            responsavel: p.responsavel,
+            dias: Math.ceil((new Date(p.dataEntregaPrevista) - new Date()) / 86400000),
+          });
+        });
+        Object.entries(porResp).forEach(([responsavel, projResp]) => {
+          const uResp = usuarios.find(u => u.nome === responsavel);
+          enviarEmail("projetos_vencendo", {
+            destinatario: responsavel,
+            emailResponsavel: uResp?.email || null,
+            projetos: projResp,
+          }).catch(()=>{});
+        });
+      }
+    };
+    // Roda 1x ao logar (com delay de 5s para não sobrecarregar)
+    const t1 = setTimeout(verificarCriticos, 5000);
+    // Roda a cada 6h
+    const t2 = setInterval(verificarCriticos, 6 * 60 * 60 * 1000);
+    return () => { clearTimeout(t1); clearInterval(t2); };
+  }, [user?.id, projetos.length]);
 
   const mudar=(pid)=>{
     const h=new Date().toTimeString().slice(0,5);

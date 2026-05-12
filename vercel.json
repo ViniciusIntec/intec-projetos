@@ -1,0 +1,9 @@
+{
+  "crons": [
+    { "path": "/api/cron-daily",  "schedule": "0 11 * * *"  },
+    { "path": "/api/cron-weekly", "schedule": "0 11 * * 1"  }
+  ],
+  "rewrites": [
+    { "source": "/cliente/:token", "destination": "/cliente.html" }
+  ]
+}
