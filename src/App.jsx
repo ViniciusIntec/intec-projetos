@@ -70,6 +70,20 @@ const fmtData    = d => { if(!d) return "—"; const [y,m,dd]=d.split("-"); retu
 const fmtDuracao = mins => { if(!mins||mins<0) return "0h 0min"; return `${Math.floor(mins/60)}h ${mins%60}min`; };
 const diasAte    = data => { if(!data) return null; return Math.ceil((new Date(data)-new Date())/86400000); };
 const statusN    = s => { if(!s) return "Novo/Definir"; if(s==="Concluído"||s==="CONCLUÍDO") return "CONCLUÍDO"; return s; };
+
+const calcStatusAuto = (p) => {
+  if (!p) return 'Novo/Definir';
+  const atual = statusN(p.status);
+  if (atual==="CONCLUÍDO" || atual==="CANCELADO") return atual;
+  if (atual==="PAUSADO") return "PAUSADO";
+  if ((p.progresso||0) >= 100) return "CONCLUÍDO";
+  if (p.dataEntregaPrevista) {
+    const dias = Math.ceil((new Date(p.dataEntregaPrevista) - new Date()) / 86400000);
+    if (dias < 0) return "ATRASADO";
+  }
+  if (p.responsavel || p.temContrato || p.prazo || p.dataContrato) return "Em andamento";
+  return "Novo/Definir";
+};
 const horaMin    = h => { if(!h) return 0; const [hh,mm]=h.split(":").map(Number); return hh*60+mm; };
 
 // Calcula horas diárias de trabalho baseado no expediente do usuário
