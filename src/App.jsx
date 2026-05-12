@@ -1741,6 +1741,235 @@ function BancoHoras({registros,setRegistros,usuarios,projetos,usuarioAtual,onAbr
 }
 
 // ─── CONFIGURAÇÕES ─────────────────────────────────────────────────────────────
+
+// ─── ESCALAS ───────────────────────────────────────────────────────────────────
+function Escalas({ usuarioAtual, usuarios }) {
+  const isGestor = ["admin","gestor"].includes(usuarioAtual.perfil);
+  const chave_revisao = "intec_escala_revisao";
+  const chave_lixo    = "intec_escala_lixo";
+
+  // Próxima sexta-feira a partir de uma data
+  const proximaSegunda = (dataISO) => {
+    const d = dataISO ? new Date(dataISO+"T12:00:00") : new Date();
+    const dow = d.getDay();
+    const diff = dow <= 5 ? (5 - dow) : (12 - dow);
+    d.setDate(d.getDate() + (diff===0&&!dataISO?7:diff));
+    return d.toISOString().slice(0,10);
+  };
+
+  // Gerar próximas N semanas de uma escala a partir de hoje
+  const gerarSemanas = (membros, dataInicio, n=12) => {
+    if (!membros || membros.length === 0) return [];
+    const semanas = [];
+    let d = new Date(dataInicio+"T12:00:00");
+    for (let i = 0; i < n; i++) {
+      semanas.push({
+        data: d.toISOString().slice(0,10),
+        membro: membros[i % membros.length],
+      });
+      d.setDate(d.getDate() + 7);
+    }
+    return semanas;
+  };
+
+  // Estado das escalas salvo no localStorage
+  const [revisao, setRevisao] = useState(() => {
+    try {
+      const s = localStorage.getItem(chave_revisao);
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {
+      membros: ["Claudio","Vinicius","Leonardo","Heriston"],
+      dataInicio: "2025-05-01",
+    };
+  });
+
+  const [lixo, setLixo] = useState(() => {
+    try {
+      const s = localStorage.getItem(chave_lixo);
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {
+      membros: ["Jonathan","Vinicius","Gustavo","Matheus","Leonardo","Marina","Pablo","Kelen"],
+      dataInicio: "2025-05-15",
+    };
+  });
+
+  const [abaE, setAbaE] = useState("revisao");
+  const [editando, setEditando] = useState(false);
+  const [novoMembro, setNovoMembro] = useState("");
+
+  // Persistir no localStorage
+  useEffect(()=>{ localStorage.setItem(chave_revisao, JSON.stringify(revisao)); }, [revisao]);
+  useEffect(()=>{ localStorage.setItem(chave_lixo, JSON.stringify(lixo)); }, [lixo]);
+
+  const escala = abaE==="revisao" ? revisao : lixo;
+  const setEscala = abaE==="revisao" ? setRevisao : setLixo;
+  const titulo = abaE==="revisao" ? "Revisão de Projetos" : "Coleta de Lixo";
+  const icone  = abaE==="revisao" ? "🔍" : "🗑";
+
+  const semanas = gerarSemanas(escala.membros, escala.dataInicio);
+  const hoje = new Date().toISOString().slice(0,10);
+
+  // Semana atual = a mais próxima que não passou
+  const semanaAtual = semanas.find(s => s.data >= hoje) || semanas[0];
+
+  const moverMembro = (idx, dir) => {
+    const lista = [...escala.membros];
+    const novo = idx + dir;
+    if (novo < 0 || novo >= lista.length) return;
+    [lista[idx], lista[novo]] = [lista[novo], lista[idx]];
+    setEscala(e=>({...e, membros:lista}));
+  };
+
+  const removerMembro = (idx) => {
+    setEscala(e=>({...e, membros: e.membros.filter((_,i)=>i!==idx)}));
+  };
+
+  const adicionarMembro = () => {
+    if (!novoMembro.trim()) return;
+    setEscala(e=>({...e, membros:[...e.membros, novoMembro.trim()]}));
+    setNovoMembro("");
+  };
+
+  const nomesDia = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      <Card style={{padding:16}}>
+        <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{flex:1}}>
+            <h2 style={{color:C.azulEscuro,margin:0,fontSize:16,fontWeight:700}}>📋 Escalas Semanais</h2>
+            <p style={{color:C.cinzaClaro,fontSize:12,margin:"4px 0 0"}}>Rotatividade semanal de responsabilidades da equipe</p>
+          </div>
+          {isGestor&&<Btn onClick={()=>setEditando(!editando)} variant={editando?"verde":"secondary"} small>
+            {editando?"✓ Concluir edição":"✏ Editar escalas"}
+          </Btn>}
+        </div>
+        <div style={{display:"flex",gap:4,marginTop:14,borderBottom:`2px solid ${C.cinzaCard}`,paddingBottom:0}}>
+          {[{id:"revisao",label:"🔍 Revisão de Projetos"},{id:"lixo",label:"🗑 Coleta de Lixo"}].map(t=>(
+            <button key={t.id} onClick={()=>setAbaE(t.id)} style={{background:"none",border:"none",padding:"8px 16px",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:abaE===t.id?700:500,color:abaE===t.id?C.azulMedio:C.cinzaClaro,borderBottom:abaE===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",marginBottom:-2,transition:"all 0.15s"}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {/* Card da semana atual */}
+      {semanaAtual&&(
+        <Card style={{background:`linear-gradient(135deg,${C.azulEscuro},${C.azulMedio})`,border:"none",padding:24}}>
+          <div style={{color:C.ciano,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8}}>SEMANA ATUAL — {icone} {titulo.toUpperCase()}</div>
+          <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+            <div style={{width:60,height:60,borderRadius:"50%",background:"rgba(255,255,255,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:900,color:C.branco,border:"3px solid rgba(255,255,255,0.3)"}}>
+              {semanaAtual.membro.slice(0,2).toUpperCase()}
+            </div>
+            <div>
+              <div style={{fontSize:26,fontWeight:900,color:C.branco}}>{semanaAtual.membro}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.7)",marginTop:2}}>
+                Semana de {fmtData(semanaAtual.data)} (Sexta-feira)
+              </div>
+            </div>
+            {escala.membros.length>1&&(()=>{
+              const prox = semanas.find(s=>s.data>semanaAtual.data);
+              return prox ? (
+                <div style={{marginLeft:"auto",textAlign:"right"}}>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>Próxima semana</div>
+                  <div style={{fontSize:16,fontWeight:700,color:C.ciano}}>{prox.membro}</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{fmtData(prox.data)}</div>
+                </div>
+              ) : null;
+            })()}
+          </div>
+        </Card>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+        {/* Calendário das próximas semanas */}
+        <Card>
+          <h3 style={{color:C.azulEscuro,margin:"0 0 14px",fontSize:14,fontWeight:700}}>📅 Próximas Semanas</h3>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {semanas.map((s,i)=>{
+              const passada  = s.data < hoje;
+              const atual    = s.data === semanaAtual?.data;
+              const idx      = i % escala.membros.length;
+              const cor      = `hsl(${(idx*47)%360},60%,45%)`;
+              return(
+                <div key={s.data} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,
+                  background:atual?"#eff6ff":passada?"#f8fafc":"white",
+                  border:`1px solid ${atual?C.azulMedio:C.cinzaCard}`,opacity:passada?0.5:1}}>
+                  <div style={{minWidth:80,fontSize:12,fontWeight:atual?700:400,color:atual?C.azulMedio:C.cinzaClaro}}>
+                    {fmtData(s.data)}
+                    {atual&&<span style={{marginLeft:6,fontSize:10,background:C.azulMedio,color:"#fff",padding:"1px 5px",borderRadius:3,fontWeight:700}}>ATUAL</span>}
+                  </div>
+                  <div style={{width:28,height:28,borderRadius:"50%",background:cor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0}}>
+                    {s.membro.slice(0,2).toUpperCase()}
+                  </div>
+                  <span style={{fontSize:13,fontWeight:atual?700:400,color:atual?C.azulEscuro:C.cinzaEscuro}}>{s.membro}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Lista de membros + edição */}
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Card>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>👥 Ordem da Escala</h3>
+              <span style={{fontSize:11,color:C.cinzaClaro}}>{escala.membros.length} membro(s)</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {escala.membros.map((m,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:C.cinzaFundo,borderRadius:8}}>
+                  <span style={{fontSize:11,fontWeight:700,color:C.cinzaClaro,minWidth:20}}>#{i+1}</span>
+                  <span style={{flex:1,fontSize:13,fontWeight:600,color:C.cinzaEscuro}}>{m}</span>
+                  {editando&&isGestor&&(
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>moverMembro(i,-1)} disabled={i===0}
+                        style={{background:"none",border:"none",cursor:i===0?"not-allowed":"pointer",color:i===0?C.cinzaClaro:C.azulMedio,fontSize:14,padding:"0 4px"}}>↑</button>
+                      <button onClick={()=>moverMembro(i,1)} disabled={i===escala.membros.length-1}
+                        style={{background:"none",border:"none",cursor:i===escala.membros.length-1?"not-allowed":"pointer",color:i===escala.membros.length-1?C.cinzaClaro:C.azulMedio,fontSize:14,padding:"0 4px"}}>↓</button>
+                      <button onClick={()=>removerMembro(i)}
+                        style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px"}}>🗑</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Adicionar membro */}
+            {editando&&isGestor&&(
+              <div style={{marginTop:10,display:"flex",gap:8}}>
+                <input value={novoMembro} onChange={e=>setNovoMembro(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter") adicionarMembro(); }}
+                  placeholder="Nome do membro..."
+                  list="lista-usuarios-escala"
+                  style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit"}}/>
+                <datalist id="lista-usuarios-escala">
+                  {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}/>)}
+                </datalist>
+                <Btn onClick={adicionarMembro} small disabled={!novoMembro.trim()}>+ Add</Btn>
+              </div>
+            )}
+          </Card>
+
+          {/* Data de início */}
+          {editando&&isGestor&&(
+            <Card>
+              <h3 style={{color:C.azulEscuro,margin:"0 0 12px",fontSize:13,fontWeight:700}}>📅 Data de início da escala</h3>
+              <Inp label="Primeira sexta-feira da escala" type="date" value={escala.dataInicio}
+                onChange={v=>setEscala(e=>({...e,dataInicio:v}))}/>
+              <p style={{fontSize:11,color:C.cinzaClaro,marginTop:6}}>
+                A escala rotaciona a cada 7 dias a partir desta data.
+              </p>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
   const [lista,setLista]=useState(usuarios);
   const [editId,setEditId]=useState(null);
@@ -3402,6 +3631,7 @@ export default function App(){
     {id:"horas",        label:"Banco de Horas",   icone:"⏱"},
     {id:"produtividade",label:"Produtividade",    icone:"📈"},
     {id:"calendario",   label:"Calendario",       icone:"📅"},
+    {id:"escalas",      label:"Escalas",          icone:"📋"},
     {id:"config",       label:"Configuracoes",    icone:"⚙"},
   ];
 
@@ -3435,6 +3665,7 @@ export default function App(){
         {aba==="horas"          &&<BancoHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
         {aba==="produtividade" &&<Produtividade registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario}/>}
         {aba==="calendario"    &&<ModuloCalendario calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
+        {aba==="escalas"   &&<Escalas usuarioAtual={user} usuarios={usuarios}/>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
       </main>
 
