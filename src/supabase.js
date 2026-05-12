@@ -23,11 +23,36 @@ export const db = {
     },
     async salvar(projeto) {
       const row = toProjetoBack(projeto);
-      const { data, error } = await supabase
-        .from('projetos')
-        .upsert(row, { onConflict: 'id' })
-        .select()
-        .single();
+      const id  = row.id;
+
+      // Tentar update primeiro (projeto existente), depois insert se não existir
+      let data, error;
+
+      // Verificar se já existe
+      const { data: existe } = await supabase
+        .from('projetos').select('id').eq('id', id).single();
+
+      if (existe) {
+        // UPDATE — preserva campos que não estamos editando
+        const resultado = await supabase
+          .from('projetos')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single();
+        data  = resultado.data;
+        error = resultado.error;
+      } else {
+        // INSERT — projeto novo
+        const resultado = await supabase
+          .from('projetos')
+          .insert(row)
+          .select()
+          .single();
+        data  = resultado.data;
+        error = resultado.error;
+      }
+
       if (error) throw error;
       return toProjetoFront(data);
     },
