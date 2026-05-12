@@ -1749,36 +1749,40 @@ function Escalas({ usuarioAtual, usuarios }) {
   const chave_lixo    = "intec_escala_lixo";
 
   // Próxima sexta-feira a partir de uma data
-  // Retorna a sexta-feira desta semana (ou da semana passada se hoje já passou)
-  const sextaFeiraDeUmaData = (dataISO) => {
-    const d = new Date((dataISO||new Date().toISOString().slice(0,10))+"T12:00:00");
-    const dow = d.getDay(); // 0=dom, 5=sex, 6=sab
-    // Recua para a sexta-feira da semana corrente
-    // Se dom(0): recua 1 dia para sexta anterior
-    // Se seg(1)..sex(5): avança para sexta da semana
-    // Se sab(6): recua 1 dia para sexta
+  // Retorna a sexta-feira da semana atual (seg-sex → sexta desta semana, sab-dom → sexta da próxima)
+  const sextaFeiraAtual = () => {
+    const d = new Date();
+    const dow = d.getDay(); // 0=dom,1=seg...5=sex,6=sab
     let diff;
-    if (dow === 6) diff = -1;        // sábado → sexta de ontem
-    else if (dow === 0) diff = -1;   // domingo → sexta de ontem (mantém semana anterior)
-    else diff = 5 - dow;             // seg-sex → próxima sexta desta semana
+    if (dow === 5) diff = 0;       // hoje é sexta
+    else if (dow === 6) diff = 6;  // sábado → próxima sexta
+    else if (dow === 0) diff = 5;  // domingo → próxima sexta
+    else diff = 5 - dow;           // seg(1)→4, ter(2)→3, qua(3)→2, qui(4)→1
     d.setDate(d.getDate() + diff);
     return d.toISOString().slice(0,10);
   };
 
-  // Gera lista de semanas (sex-a-sex) a partir da dataInicio da escala
-  // Sempre inclui passadas e futuras para calcular o índice correto
-  const gerarTodasSemanas = (membros, dataInicio) => {
+  // Dado dataInicio (que deve ser uma sexta-feira), gera N semanas
+  // O índice de cada semana é calculado pela distância em semanas a partir do dataInicio
+  const gerarSemanas = (membros, dataInicio, n=16) => {
     if (!membros || membros.length === 0 || !dataInicio) return [];
-    // Calcular quantas semanas passaram desde o dataInicio até hoje
-    const ini   = new Date(dataInicio+"T12:00:00");
-    const hoje2 = new Date();
-    const diffMs = hoje2 - ini;
-    const diffSem = Math.floor(diffMs / (7*24*60*60*1000));
-    // Gerar de -2 semanas antes até +14 semanas depois
+    const ini = new Date(dataInicio+"T12:00:00");
+    // Alinhar ini para sexta-feira caso não seja
+    const dowIni = ini.getDay();
+    if (dowIni !== 5) {
+      const ajuste = dowIni < 5 ? (5-dowIni) : (5+(7-dowIni));
+      ini.setDate(ini.getDate() + ajuste);
+    }
+    // Sexta atual
+    const sextaHoje = sextaFeiraAtual();
+    const sextaHojeD = new Date(sextaHoje+"T12:00:00");
+    // Quantas semanas da ini até a sexta atual
+    const diffSem = Math.round((sextaHojeD - ini) / (7*24*60*60*1000));
+    // Gerar de 4 semanas atrás até n semanas à frente
     const semanas = [];
-    for (let i = -2; i <= 14; i++) {
+    for (let i = -4; i < n; i++) {
       const d = new Date(ini);
-      d.setDate(ini.getDate() + (i * 7));
+      d.setDate(ini.getDate() + ((diffSem + i) * 7));
       const idx = ((diffSem + i) % membros.length + membros.length) % membros.length;
       semanas.push({
         data:   d.toISOString().slice(0,10),
@@ -1789,9 +1793,6 @@ function Escalas({ usuarioAtual, usuarios }) {
     return semanas;
   };
 
-  // Gerar semanas = alias para compatibilidade
-  const gerarSemanas = (membros, dataInicio) => gerarTodasSemanas(membros, dataInicio);
-
   // Estado das escalas salvo no localStorage
   const [revisao, setRevisao] = useState(() => {
     try {
@@ -1800,7 +1801,7 @@ function Escalas({ usuarioAtual, usuarios }) {
     } catch {}
     return {
       membros: ["Claudio","Vinicius","Leonardo","Heriston"],
-      dataInicio: "2025-05-01",
+      dataInicio: "2026-05-01",
     };
   });
 
@@ -1811,7 +1812,7 @@ function Escalas({ usuarioAtual, usuarios }) {
     } catch {}
     return {
       membros: ["Jonathan","Vinicius","Gustavo","Matheus","Leonardo","Marina","Pablo","Kelen"],
-      dataInicio: "2025-05-15",
+      dataInicio: "2026-05-15",
     };
   });
 
@@ -1830,12 +1831,11 @@ function Escalas({ usuarioAtual, usuarios }) {
 
   const semanas = gerarSemanas(escala.membros, escala.dataInicio);
   const hoje = new Date().toISOString().slice(0,10);
-  // Sexta-feira desta semana
-  const sextaAtual = sextaFeiraDeUmaData(hoje);
-  // Semana atual = a sexta exata desta semana
+  const sextaAtual = sextaFeiraAtual();
+  // Semana atual = exatamente a sexta desta semana
   const semanaAtual = semanas.find(s => s.data === sextaAtual)
-    || semanas.find(s => s.data >= hoje)
-    || semanas[0];
+    || semanas.find(s => s.data > hoje)
+    || semanas[semanas.length-1];
 
   const moverMembro = (idx, dir) => {
     const lista = [...escala.membros];
