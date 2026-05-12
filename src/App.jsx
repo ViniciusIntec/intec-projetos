@@ -33,6 +33,17 @@ const TIPOS = {
   PA:"Proj. Ar-condic.", PF:"Proj. Fundação", CT:"Consultoria", RE:"Revisão",
 };
 
+// Disciplinas disponíveis para projetos de Compatibilização (CB)
+const DISCIPLINAS_CB = [
+  { id:"PE", label:"Proj. Estrutural",     icone:"🏗",  cor:"#2563a8" },
+  { id:"PF", label:"Proj. Fundação",        icone:"⚓",  cor:"#0891b2" },
+  { id:"EL", label:"Proj. Elétrico",        icone:"⚡",  cor:"#f59e0b" },
+  { id:"PH", label:"Proj. Hidrossanitário", icone:"💧",  cor:"#06b6d4" },
+  { id:"PA", label:"Proj. Ar-Condicionado", icone:"❄️",  cor:"#8b5cf6" },
+  { id:"AR", label:"Proj. Arquitetônico",   icone:"📐",  cor:"#ec4899" },
+  { id:"IT", label:"Proj. PPCI/Incêndio",   icone:"🔥",  cor:"#ef4444" },
+];
+
 const USUARIOS_PADRAO = [
   { id:"vinicius", nome:"Vinicius", email:"intecestruturas4@gmail.com", senha:"1234",
     perfil:"colaborador", cor:"#2563a8", iniciais:"VI", ativo:true,
@@ -2063,7 +2074,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
       coresponsavel2:"", coresponsavel3:"",
       ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
       prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
-      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true, pausas:[],
+      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true, pausas:[], disciplinas:[],
     };
     if(!projeto) return base;
     // Spread do projeto e garantir campos do portal
@@ -2412,6 +2423,102 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           </div>
 
           <div>
+            {/* ── CHECKLIST DE DISCIPLINAS (só para CB) ── */}
+            {form.tipo==="CB"&&(
+              <div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>
+                    ✅ Checklist de Disciplinas
+                  </h3>
+                  <span style={{fontSize:11,color:C.cinzaClaro}}>
+                    {(form.disciplinas||[]).filter(d=>d.concluido).length}/{(form.disciplinas||[]).length} concluídas
+                  </span>
+                </div>
+
+                {/* Adicionar disciplina */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).map(d=>(
+                    <button key={d.id} onClick={()=>s("disciplinas",[...(form.disciplinas||[]),{id:d.id,label:d.label,icone:d.icone,cor:d.cor,concluido:false,dataConclusao:"",responsavel:""}])}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,border:`1.5px dashed ${d.cor}`,background:"transparent",color:d.cor,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",transition:"all 0.15s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.background=d.cor+"15";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
+                      {d.icone} + {d.id}
+                    </button>
+                  ))}
+                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).length===0&&
+                    <span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>Todas as disciplinas adicionadas</span>}
+                </div>
+
+                {/* Lista de disciplinas */}
+                {(form.disciplinas||[]).length===0&&(
+                  <div style={{padding:"16px",background:C.cinzaFundo,borderRadius:10,textAlign:"center",fontSize:12,color:C.cinzaClaro}}>
+                    Clique nos botões acima para adicionar as disciplinas deste projeto
+                  </div>
+                )}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {(form.disciplinas||[]).map((d,i)=>(
+                    <div key={d.id} style={{display:"flex",gap:10,alignItems:"center",padding:"12px 14px",
+                      borderRadius:10,border:`2px solid ${d.concluido?d.cor+"60":C.cinzaCard}`,
+                      background:d.concluido?d.cor+"08":"#fafafa",transition:"all 0.2s"}}>
+                      {/* Checkbox */}
+                      <input type="checkbox" checked={!!d.concluido}
+                        onChange={e=>{
+                          const hoje = new Date().toISOString().slice(0,10);
+                          s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,concluido:e.target.checked,dataConclusao:e.target.checked?(x.dataConclusao||hoje):""}:x));
+                        }}
+                        style={{width:18,height:18,cursor:"pointer",accentColor:d.cor}}/>
+                      {/* Ícone + label */}
+                      <div style={{fontSize:20}}>{d.icone}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:d.concluido?d.cor:C.cinzaEscuro,textDecoration:d.concluido?"line-through":"none"}}>
+                          {d.label} <span style={{fontSize:10,background:d.cor+"20",color:d.cor,padding:"1px 6px",borderRadius:4,fontWeight:800,textDecoration:"none",display:"inline-block"}}>{d.id}</span>
+                        </div>
+                        {/* Responsável */}
+                        <select value={d.responsavel||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,responsavel:e.target.value}:x))}
+                          style={{fontSize:11,color:C.cinzaClaro,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",marginTop:2,padding:0}}>
+                          <option value="">— Selecionar responsável —</option>
+                          {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome}</option>)}
+                        </select>
+                      </div>
+                      {/* Data de conclusão */}
+                      {d.concluido&&(
+                        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
+                          <label style={{fontSize:10,color:d.cor,fontWeight:700}}>Concluído em</label>
+                          <input type="date" value={d.dataConclusao||""} max={new Date().toISOString().slice(0,10)}
+                            onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,dataConclusao:e.target.value}:x))}
+                            style={{border:`1.5px solid ${d.cor}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit",color:d.cor,fontWeight:700}}/>
+                        </div>
+                      )}
+                      {!d.concluido&&(
+                        <span style={{fontSize:11,color:C.cinzaClaro,whiteSpace:"nowrap"}}>⏳ Pendente</span>
+                      )}
+                      {/* Remover */}
+                      <button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))}
+                        style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Progresso visual */}
+                {(form.disciplinas||[]).length>0&&(()=>{
+                  const total = form.disciplinas.length;
+                  const ok    = form.disciplinas.filter(d=>d.concluido).length;
+                  const pct   = Math.round((ok/total)*100);
+                  return(
+                    <div style={{marginTop:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.cinzaClaro,marginBottom:4}}>
+                        <span>Progresso das disciplinas</span>
+                        <span style={{fontWeight:700,color:pct===100?C.verde:C.azulMedio}}>{pct}% ({ok}/{total})</span>
+                      </div>
+                      <div style={{background:C.cinzaCard,borderRadius:6,height:8}}>
+                        <div style={{background:pct===100?C.verde:C.azulMedio,height:8,borderRadius:6,width:`${pct}%`,transition:"width 0.4s"}}/>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Obs</h3>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
