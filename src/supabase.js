@@ -126,6 +126,13 @@ export const db = {
         .eq('id', id);
       if (error) throw error;
     },
+    async toggleVisivel(id, visivel) {
+      const { error } = await supabase
+        .from('sessoes_horas')
+        .update({ visivel_cliente: visivel })
+        .eq('id', id);
+      if (error) throw error;
+    },
   },
 
   recessos: {

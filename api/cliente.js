@@ -96,7 +96,7 @@ export default async function handler(req) {
           }));
 
         // Sessões do banco de horas como linha do tempo
-        const sessoesTimeline = (sessoes || []).map(s => {
+        const sessoesTimeline = (sessoes || []).filter(s => s.visivel_cliente !== false).map(s => {
           const nomeColaborador = s.usuarios?.nome || 'Equipe INTEC';
           const hIni  = s.hora_inicio || '';
           const hFim  = s.hora_fim    || '';
@@ -109,7 +109,7 @@ export default async function handler(req) {
             id:        s.id,
             tipo:      'sessao',
             titulo:    `Trabalho realizado por ${nomeColaborador}`,
-            descricao: `${hIni}${hFim?' às '+hFim:''}${durStr?' ('+durStr+')':''}${obsStr}`,
+            descricao: `${s.data ? new Date(s.data+'T12:00:00').toLocaleDateString('pt-BR') : ''} ${durStr?'('+durStr+')':''} ${obsStr}`.trim(),
             autor:     nomeColaborador,
             data:      s.created_at,
             icone:     '⚙️',

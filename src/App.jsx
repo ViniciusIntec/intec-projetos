@@ -385,7 +385,14 @@ function TelaLogin({usuarios,onLogin}){
               </div>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              <Inp label="Senha" type="password" value={senha} onChange={setSenha} placeholder="Digite sua senha" required/>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Senha <span style={{color:C.vermelho}}>*</span></label>
+                <input type="password" value={senha} onChange={e=>setSenha(e.target.value)}
+                  placeholder="Digite sua senha"
+                  autoFocus
+                  onKeyDown={e=>{ if(e.key==="Enter"){ if(userSel.senha===senha) onLogin(userSel); else{setErro("Senha incorreta.");setSenha("");} } }}
+                  style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"10px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:C.branco,width:"100%",boxSizing:"border-box"}}/>
+              </div>
               {erro&&<div style={{padding:"8px 12px",background:"#fef2f2",borderRadius:8,fontSize:13,color:C.vermelho,border:"1px solid #fecaca"}}>⚠ {erro}</div>}
               <Btn onClick={()=>{ if(userSel.senha===senha) onLogin(userSel); else {setErro("Senha incorreta.");setSenha("");} }} style={{width:"100%",justifyContent:"center"}}>Entrar no Sistema</Btn>
             </div>
@@ -490,11 +497,12 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     </>)}
 
     <Inp label="Hora de início" type="time" value={hi} onChange={setHi}/>
-    <Inp label="Observação (opcional)" value={obs} onChange={setObs} placeholder={tipoSessao==="projeto"?"Ex: Modelagem no Eberick...":"Ex: Orçamento para cliente X..."}/>
+    <Inp label="Observação *" value={obs} onChange={setObs} placeholder={tipoSessao==="projeto"?"Ex: Modelagem no Eberick...":"Ex: Orçamento para cliente X..."} required/>
+    {!obs.trim()&&<span style={{fontSize:11,color:C.cinzaClaro}}>Descreva brevemente o que será feito</span>}
     <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
       <Btn variant="ghost" onClick={onFechar}>Agora não</Btn>
       <Btn onClick={()=>onIniciar(tipoSessao==="projeto"?projSel:null, hi, obs, tipoSessao==="admin"?catSel:null)}
-        disabled={tipoSessao==="projeto"?!projSel:!catSel}>▶ Iniciar</Btn>
+        disabled={tipoSessao==="projeto"?(!projSel||!obs.trim()):(!catSel||!obs.trim())}>▶ Iniciar</Btn>
     </div>
   </>, "⏱ Iniciar Sessão de Trabalho", `Olá, ${usuarioAtual.nome}! O que você vai fazer?`, C.azulEscuro, C.azulMedio);
 
@@ -2083,12 +2091,13 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           id:              s.id,
           tipo:            'sessao',
           titulo:          `Trabalho realizado por ${nome}`,
-          descricao:       `${s.horaInicio||''}${s.horaFim?' às '+s.horaFim:''} ${durStr?'('+durStr+')':''} ${s.obs?'— '+s.obs:''}`.trim(),
+          descricao:       `${s.data?new Date(s.data+'T12:00:00').toLocaleDateString('pt-BR'):''} ${durStr?'('+durStr+')':''} ${s.obs?'— '+s.obs:''}`.trim(),
           autor_nome:      nome,
           icone:           '⚙️',
-          visivel_cliente: true,
-          created_at:      s.inicioTs ? new Date(s.inicioTs).toISOString() : (s.data+'T'+s.horaInicio+':00'),
+          visivel_cliente: s.visivel_cliente !== false,
+          created_at:      s.inicioTs ? new Date(s.inicioTs).toISOString() : (s.data+'T'+(s.horaInicio||'00:00')+':00'),
           origem:          'sessao',
+          sessaoId:        s.id,
         };
       });
       // Unir e ordenar por data
@@ -2404,7 +2413,22 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                         {isSessao&&<span style={{marginLeft:6,color:"#8492a6"}}>(gerado automaticamente)</span>}
                       </div>
                     </div>
-                    {!isSessao&&<button onClick={()=>excluirAtu(a.id)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px",flexShrink:0}}>🗑</button>}
+                    <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"center",flexShrink:0}}>
+                      {isSessao&&(
+                        <button title={a.visivel_cliente?"Clique para ocultar do cliente":"Clique para mostrar ao cliente"}
+                          onClick={async()=>{
+                            try{
+                              await db.sessoes.toggleVisivel(a.sessaoId, !a.visivel_cliente);
+                              setAtualizacoes(x=>x.map(item=>item.sessaoId===a.sessaoId?{...item,visivel_cliente:!a.visivel_cliente}:item));
+                            }catch(e){console.error(e);}
+                          }}
+                          style={{background:"none",border:"none",cursor:"pointer",fontSize:14,padding:"0 4px",color:a.visivel_cliente?C.verde:C.cinzaClaro}}
+                          title={a.visivel_cliente?"Visível ao cliente — clique para ocultar":"Oculto do cliente — clique para mostrar"}>
+                          {a.visivel_cliente?"👁":"🙈"}
+                        </button>
+                      )}
+                      {!isSessao&&<button onClick={()=>excluirAtu(a.id)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px"}}>🗑</button>}
+                    </div>
                   </div>
                   );
                 })}
