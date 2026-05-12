@@ -249,15 +249,27 @@ function render(d){
   html += '<div class="card">';
   html += '<div class="ctitle">🕐 Histórico de Atualizações</div>';
   if(atus.length===0){
-    html += '<p style="color:#8492a6;text-align:center;padding:20px 0;font-size:13px">Nenhuma atualização registrada ainda.</p>';
+    html += '<p style="color:#8492a6;text-align:center;padding:20px 0;font-size:13px">Nenhuma atividade registrada neste projeto ainda.</p>';
   } else {
     html += '<div class="tl">';
     for(var j=0;j<atus.length;j++){
       var a=atus[j];
+      var isSessao = a.origem==="sessao" || a.tipo==="sessao";
+      var iconeBg  = isSessao ? "#f0fdf4" : "#eff6ff";
+      var iconeBorder = isSessao ? "#86efac" : "#e0edff";
+      var tagHTML  = isSessao
+        ? '<span style="font-size:10px;background:#f0fdf4;color:#166534;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #86efac;margin-left:6px">Execução</span>'
+        : '<span style="font-size:10px;background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;border:1px solid #bfdbfe;margin-left:6px">Atualização</span>';
       html += '<div class="tl-item">';
-      html += '<div class="tl-left"><div class="tl-icon-wrap">'+(a.icone||"📝")+'</div><div class="tl-line"></div></div>';
+      html += '<div class="tl-left">';
+      html += '<div class="tl-icon-wrap" style="background:'+iconeBg+';border-color:'+iconeBorder+'">'+(a.icone||"📝")+'</div>';
+      html += '<div class="tl-line"></div>';
+      html += '</div>';
       html += '<div class="tl-body">';
+      html += '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">';
       html += '<div class="tl-titulo">'+(a.titulo||"Atualização")+'</div>';
+      html += tagHTML;
+      html += '</div>';
       if(a.descricao) html += '<div class="tl-desc">'+a.descricao+'</div>';
       html += '<div class="tl-meta">';
       if(a.autor) html += '<span>👤 '+a.autor+'</span>';

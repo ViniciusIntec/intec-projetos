@@ -2068,10 +2068,35 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
   useEffect(() => {
     if (modo !== "editar" || !projeto?.id) return;
     setCarregandoAtu(true);
-    portal.listarAtualizacoes(projeto.id)
-      .then(setAtualizacoes)
-      .catch(()=>{})
-      .finally(()=>setCarregandoAtu(false));
+    Promise.all([
+      portal.listarAtualizacoes(projeto.id),
+      db.sessoes.listar().then(s => s.filter(x => x.projetoId===projeto.id && x.horaFim)),
+    ]).then(([manuais, sessoesProjeto]) => {
+      // Converter sessões para formato de atualização
+      const sessaoItems = sessoesProjeto.map(s => {
+        const u = usuarios?.find(x=>x.id===s.usuarioId);
+        const nome = u?.nome || 'Equipe INTEC';
+        const durMin = s.duracaoMin||0;
+        const h=Math.floor(durMin/60), m=durMin%60;
+        const durStr = durMin>0 ? (h>0?`${h}h ${m}min`:`${m}min`) : '';
+        return {
+          id:              s.id,
+          tipo:            'sessao',
+          titulo:          `Trabalho realizado por ${nome}`,
+          descricao:       `${s.horaInicio||''}${s.horaFim?' às '+s.horaFim:''} ${durStr?'('+durStr+')':''} ${s.obs?'— '+s.obs:''}`.trim(),
+          autor_nome:      nome,
+          icone:           '⚙️',
+          visivel_cliente: true,
+          created_at:      s.inicioTs ? new Date(s.inicioTs).toISOString() : (s.data+'T'+s.horaInicio+':00'),
+          origem:          'sessao',
+        };
+      });
+      // Unir e ordenar por data
+      const todos = [...manuais.map(x=>({...x,origem:'manual'})), ...sessaoItems]
+        .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+      setAtualizacoes(todos);
+    }).catch(()=>{})
+    .finally(()=>setCarregandoAtu(false));
   }, [projeto?.id]);
 
   const gerarLink = async () => {
@@ -2355,22 +2380,34 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               {/* Lista de atualizações */}
               {carregandoAtu && <div style={{textAlign:"center",color:C.cinzaClaro,padding:16}}>⏳ Carregando...</div>}
               {!carregandoAtu && atualizacoes.length===0 && <div style={{textAlign:"center",color:C.cinzaClaro,padding:16,fontSize:12}}>Nenhuma atualização ainda. Adicione a primeira acima!</div>}
-              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
-                {atualizacoes.map(a=>(
-                  <div key={a.id} style={{display:"flex",gap:10,padding:"10px 12px",background:a.visivel_cliente?"#f0f9ff":"#f8fafc",borderRadius:8,border:`1px solid ${a.visivel_cliente?C.azulClaro:C.cinzaCard}`,opacity:a.visivel_cliente?1:0.6}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:360,overflowY:"auto"}}>
+                {atualizacoes.map(a=>{
+                  const isSessao = a.origem==="sessao" || a.tipo==="sessao";
+                  return (
+                  <div key={a.id} style={{display:"flex",gap:10,padding:"10px 12px",
+                    background:isSessao?"#f0fdf4":a.visivel_cliente?"#f0f9ff":"#f8fafc",
+                    borderRadius:8,border:`1px solid ${isSessao?"#86efac":a.visivel_cliente?C.azulClaro:C.cinzaCard}`,
+                    opacity:(!isSessao&&!a.visivel_cliente)?0.6:1}}>
                     <span style={{fontSize:20,flexShrink:0}}>{a.icone||"📝"}</span>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:700,color:C.cinzaEscuro}}>{a.titulo}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                        <span style={{fontSize:13,fontWeight:700,color:C.cinzaEscuro}}>{a.titulo}</span>
+                        {isSessao
+                          ? <span style={{fontSize:10,background:"#f0fdf4",color:"#166534",padding:"1px 7px",borderRadius:10,fontWeight:700,border:"1px solid #86efac"}}>⚙ Execução</span>
+                          : <span style={{fontSize:10,background:"#eff6ff",color:C.azulMedio,padding:"1px 7px",borderRadius:10,fontWeight:700,border:`1px solid #bfdbfe`}}>📝 Manual</span>}
+                      </div>
                       {a.descricao&&<div style={{fontSize:12,color:C.cinzaClaro,marginTop:2}}>{a.descricao}</div>}
                       <div style={{fontSize:11,color:C.cinzaClaro,marginTop:4}}>
                         {a.autor_nome&&<span>👤 {a.autor_nome} · </span>}
                         {new Date(a.created_at).toLocaleDateString("pt-BR")}
-                        {!a.visivel_cliente&&<span style={{marginLeft:8,color:C.amarelo}}>👁 Oculto ao cliente</span>}
+                        {!isSessao&&!a.visivel_cliente&&<span style={{marginLeft:8,color:C.amarelo}}>👁 Oculto ao cliente</span>}
+                        {isSessao&&<span style={{marginLeft:6,color:"#8492a6"}}>(gerado automaticamente)</span>}
                       </div>
                     </div>
-                    <button onClick={()=>excluirAtu(a.id)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px",flexShrink:0}}>🗑</button>
+                    {!isSessao&&<button onClick={()=>excluirAtu(a.id)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px",flexShrink:0}}>🗑</button>}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

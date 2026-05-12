@@ -49,9 +49,14 @@ export default async function handler(req) {
       });
     }
 
-    // Buscar atualizações do projeto (manuais + automáticas)
+    // Buscar atualizações manuais do projeto
     const atualizacoes = await supabaseGet('atualizacoes_projeto',
       `projeto_id=eq.${projeto.id}&order=created_at.desc&select=*`
+    );
+
+    // Buscar sessões do banco de horas deste projeto (apenas encerradas)
+    const sessoes = await supabaseGet('sessoes_horas',
+      `projeto_id=eq.${projeto.id}&hora_fim=not.is.null&order=created_at.desc&select=*,usuarios(nome)`
     );
 
     // Retornar apenas dados públicos (sem financeiro, sem dados internos)
@@ -75,17 +80,47 @@ export default async function handler(req) {
       progresso:            projeto.progresso || 0,
       obs:                  projeto.obs_cliente || '',
       // Atualizações visíveis ao cliente
-      atualizacoes: (atualizacoes || [])
-        .filter(a => a.visivel_cliente !== false)
-        .map(a => ({
-          id:       a.id,
-          tipo:     a.tipo,
-          titulo:   a.titulo,
-          descricao:a.descricao,
-          autor:    a.autor_nome,
-          data:     a.created_at,
-          icone:    a.icone || '📝',
-        })),
+      atualizacoes: (() => {
+        // Atualizações manuais visíveis ao cliente
+        const manuais = (atualizacoes || [])
+          .filter(a => a.visivel_cliente !== false)
+          .map(a => ({
+            id:        a.id,
+            tipo:      a.tipo || 'manual',
+            titulo:    a.titulo,
+            descricao: a.descricao || '',
+            autor:     a.autor_nome || '',
+            data:      a.created_at,
+            icone:     a.icone || '📝',
+            origem:    'manual',
+          }));
+
+        // Sessões do banco de horas como linha do tempo
+        const sessoesTimeline = (sessoes || []).map(s => {
+          const nomeColaborador = s.usuarios?.nome || 'Equipe INTEC';
+          const hIni  = s.hora_inicio || '';
+          const hFim  = s.hora_fim    || '';
+          const durMin= s.duracao_min || 0;
+          const horas = Math.floor(durMin/60);
+          const mins  = durMin % 60;
+          const durStr= durMin > 0 ? (horas>0 ? `${horas}h ${mins}min` : `${mins}min`) : '';
+          const obsStr= s.obs ? ` — ${s.obs}` : '';
+          return {
+            id:        s.id,
+            tipo:      'sessao',
+            titulo:    `Trabalho realizado por ${nomeColaborador}`,
+            descricao: `${hIni}${hFim?' às '+hFim:''}${durStr?' ('+durStr+')':''}${obsStr}`,
+            autor:     nomeColaborador,
+            data:      s.created_at,
+            icone:     '⚙️',
+            origem:    'sessao',
+          };
+        });
+
+        // Unir e ordenar por data decrescente
+        return [...manuais, ...sessoesTimeline]
+          .sort((a,b) => new Date(b.data) - new Date(a.data));
+      })(),
     };
 
     return new Response(JSON.stringify(dadosPublicos), {
