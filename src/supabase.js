@@ -188,8 +188,8 @@ function toProjetoBack(p) {
     // Portal do cliente — preservar token e salvar progresso/obs
     ...(p.token_cliente        ? { token_cliente:      p.token_cliente }      : {}),
     ...(p.link_cliente_ativo !== undefined ? { link_cliente_ativo: p.link_cliente_ativo } : {}),
-    progresso:             p.progresso || 0,
-    obs_cliente:           p.obsCliente || p.obs_cliente || '',
+    progresso:             p.progresso ?? 0,
+    obs_cliente:           p.obsCliente  ?? p.obs_cliente ?? '',
   };
 }
 

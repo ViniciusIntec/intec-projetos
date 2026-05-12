@@ -1955,21 +1955,27 @@ function PainelDrive({drive,projetosExistentes,onImportar}){
 
 // ─── MODAL PROJETO ─────────────────────────────────────────────────────────────
 function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
-  const [form,setForm]=useState(()=>({
-    id:"", codigo:"", cliente:"", responsavel:"", coresponsavel:"",
-    coresponsavel2:"", coresponsavel3:"",
-    ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
-    prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
-    obs:"", temContrato:false, parcelas:[], driveUrl:"",
-    // Portal do cliente — carrega do projeto existente
-    token_cliente:      projeto?.token_cliente      || "",
-    link_cliente_ativo: projeto?.link_cliente_ativo || false,
-    progresso:          projeto?.progresso          || 0,
-    obs_cliente:        projeto?.obs_cliente        || "",
-    obsCliente:         projeto?.obs_cliente        || "",
-    // Sobrescreve com todos os campos do projeto se existir
-    ...(projeto || {}),
-  }));
+  const [form,setForm]=useState(()=>{
+    const base = {
+      id:"", codigo:"", cliente:"", responsavel:"", coresponsavel:"",
+      coresponsavel2:"", coresponsavel3:"",
+      ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
+      prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
+      obs:"", temContrato:false, parcelas:[], driveUrl:"",
+    };
+    if(!projeto) return base;
+    // Spread do projeto e garantir campos do portal
+    return {
+      ...base,
+      ...projeto,
+      // Portal — garantir que vieram do banco
+      token_cliente:      projeto.token_cliente      || "",
+      link_cliente_ativo: projeto.link_cliente_ativo || false,
+      progresso:          projeto.progresso          ?? 0,
+      obs_cliente:        projeto.obs_cliente        || "",
+      obsCliente:         projeto.obs_cliente        || "",
+    };
+  });
   const [abaModal, setAbaModal] = useState("info"); // info | financeiro | portal
   const [atualizacoes, setAtualizacoes] = useState([]);
   const [carregandoAtu, setCarregandoAtu] = useState(false);
@@ -2885,12 +2891,20 @@ export default function App(){
 
   const salvarP = async (f) => {
     const c = f.codigo?.trim(); if(!c) return;
-    // Garantir que obsCliente e obs_cliente estejam sincronizados
-    const n = {...f, id:c, obs_cliente: f.obsCliente||f.obs_cliente||""};
+    const n = {
+      ...f,
+      id: c,
+      // Sincronizar campos do portal explicitamente
+      progresso:   f.progresso   ?? 0,
+      obs_cliente: f.obsCliente  || f.obs_cliente || "",
+      obsCliente:  f.obsCliente  || f.obs_cliente || "",
+    };
     if(modal.modo==="novo") setProjetos(p=>[...p,n]);
     else setProjetos(p=>p.map(x=>x.id===modal.projeto.id?n:x));
     setModal(null);
-    try { await db.projetos.salvar(n); } catch(e){ console.error("Erro salvar projeto:", e); }
+    try {
+      await db.projetos.salvar(n);
+    } catch(e){ console.error("Erro salvar projeto:", e); }
   };
 
   const excluirP = async (id) => {
