@@ -3809,6 +3809,23 @@ export default function App(){
   const isAdmin    = user.perfil === "admin";
   const isGestorOuAdmin = ["admin","gestor"].includes(user.perfil);
   const isColab    = user.perfil === "colaborador";
+
+  // ── PWA: captura o evento de instalação ──────────────────────────────────
+  const [pwaPrompt, setPwaPrompt] = useState(null);
+  const [pwaInstalado, setPwaInstalado] = useState(false);
+  useEffect(()=>{
+    const handler = (e) => { e.preventDefault(); setPwaPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', ()=>{ setPwaInstalado(true); setPwaPrompt(null); });
+    return ()=> window.removeEventListener('beforeinstallprompt', handler);
+  },[]);
+
+  const instalarPWA = async () => {
+    if (!pwaPrompt) return;
+    pwaPrompt.prompt();
+    const { outcome } = await pwaPrompt.userChoice;
+    if (outcome === 'accepted') { setPwaInstalado(true); setPwaPrompt(null); }
+  };
   const abas=[
     {id:"dashboard",    label:"Dashboard",       icone:"📊"},
     {id:"projetos",     label:"Projetos",         icone:"📁"},
@@ -3832,6 +3849,12 @@ export default function App(){
             {abas.map(a=><button key={a.id} onClick={()=>setAba(a.id)} style={{background:aba===a.id?"rgba(255,255,255,0.15)":"transparent",color:aba===a.id?C.branco:"rgba(255,255,255,0.65)",border:"none",padding:"16px 14px",cursor:"pointer",fontSize:13,fontWeight:aba===a.id?700:500,fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,borderBottom:aba===a.id?`2px solid ${C.ciano}`:"2px solid transparent",transition:"all 0.2s",whiteSpace:"nowrap"}}>{a.icone} {a.label}</button>)}
           </nav>
           <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+            {pwaPrompt&&!pwaInstalado&&(
+              <button onClick={instalarPWA} title="Instalar INTEC como aplicativo"
+                style={{background:"rgba(86,191,233,0.15)",color:C.ciano,border:"1px solid rgba(86,191,233,0.3)",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
+                📲 Instalar App
+              </button>
+            )}
             {sessaoAtiva&&<div style={{background:"rgba(34,197,94,0.2)",border:"1px solid rgba(34,197,94,0.4)",borderRadius:8,padding:"4px 10px",fontSize:11,color:C.verde,fontWeight:700}}>▶ Em sessão</div>}
             {!sessaoAtiva&&<Btn onClick={()=>setModalH("checkin")} variant="ciano" small>▶ Iniciar Sessão</Btn>}
             {sessaoAtiva&&<Btn onClick={()=>setModalH("encerramento")} small style={{background:"rgba(239,68,68,0.15)",color:"#fca5a5",border:"1px solid rgba(239,68,68,0.3)"}}>⏹ Encerrar</Btn>}
