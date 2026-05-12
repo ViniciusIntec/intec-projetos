@@ -196,7 +196,7 @@ function render(dados) {
       <div>
         <div class="status-label" style="color:${bannerCor}">STATUS ATUAL</div>
         <div class="status-value" style="color:${bannerCor}">${dados.status}</div>
-        ${dados.obs ? `<div style="font-size:13px;color:#6b7280;margin-top:6px">${dados.obs}</div>` : ""}
+        ${dados.obs ? `<div style="margin-top:10px;padding:10px 14px;background:rgba(255,255,255,0.2);border-radius:8px;font-size:13px;color:#1e2535;font-style:italic;border-left:3px solid ${st.cor}">💬 ${dados.obs}</div>` : ""}
       </div>
     </div>
 
@@ -234,13 +234,17 @@ function render(dados) {
       <div class="card-title">📊 Progresso do Projeto</div>
       <div class="progress-bar-wrap">
         <div class="progress-label">
-          <span>Conclusão</span>
-          <span style="color:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"}">${prog}%</span>
+          <span>Conclusão do Projeto</span>
+          <span id="prog-pct" style="color:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"};font-size:18px">${prog}%</span>
         </div>
         <div class="progress-track">
-          <div class="progress-fill" style="width:${prog}%;background:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"}"></div>
+          <div id="prog-bar" style="height:14px;border-radius:8px;width:0%;background:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"};transition:width 1s ease"></div>
         </div>
+        <script>
+          setTimeout(()=>{ const b=document.getElementById('prog-bar'); if(b) b.style.width='${prog}%'; },100);
+        </script>
       </div>
+      ${prog > 0 ? `<div style="margin-top:8px;background:#f0f4f8;border-radius:8px;height:6px"><div style="height:6px;border-radius:8px;width:${prog}%;background:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"}"></div></div>` : ""}
 
       ${dados.dataEntregaReal ? `
       <div class="entrega-comp">
@@ -268,7 +272,14 @@ function render(dados) {
       &nbsp;·&nbsp;
       <a href="#" onclick="location.reload()" style="color:#2563a8;text-decoration:none">🔄 Atualizar</a>
     </div>
-  `;
+  \`;
+  // Animar barra de progresso após render
+  requestAnimationFrame(()=>{
+    requestAnimationFrame(()=>{
+      const bar = document.getElementById('prog-bar');
+      if(bar) bar.style.width = prog + '%';
+    });
+  });
 }
 
 function renderErro(msg) {
