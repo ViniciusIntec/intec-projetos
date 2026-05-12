@@ -5,76 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Acompanhamento de Projeto — INTEC Engenharia</title>
   <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Segoe UI',system-ui,sans-serif; background:#f0f4f8; color:#1e2535; min-height:100vh; }
-
-    .header { background:linear-gradient(135deg,#1a3a6b,#2563a8); padding:0 24px; position:sticky; top:0; z-index:100; box-shadow:0 4px 20px rgba(26,58,107,.3); }
-    .header-inner { max-width:800px; margin:0 auto; display:flex; align-items:center; gap:16px; padding:16px 0; }
-    .logo-text { color:#fff; font-size:22px; font-weight:900; letter-spacing:1px; }
-    .logo-sub { color:#56bfe9; font-size:9px; letter-spacing:3px; font-weight:700; display:block; }
-
-    .main { max-width:800px; margin:0 auto; padding:28px 20px; }
-
-    .status-banner { border-radius:14px; padding:20px 24px; margin-bottom:24px; display:flex; align-items:center; gap:16px; }
-    .status-icon { font-size:36px; flex-shrink:0; }
-    .status-label { font-size:13px; font-weight:700; opacity:.8; margin-bottom:4px; }
-    .status-value { font-size:20px; font-weight:900; }
-
-    .card { background:#fff; border-radius:14px; padding:24px; box-shadow:0 2px 12px rgba(26,58,107,.08); border:1px solid #e8eef5; margin-bottom:20px; }
-    .card-title { font-size:14px; font-weight:700; color:#1a3a6b; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
-
-    .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-    .info-item { background:#f0f4f8; border-radius:10px; padding:12px 14px; }
-    .info-label { font-size:11px; font-weight:700; color:#8492a6; margin-bottom:4px; text-transform:uppercase; letter-spacing:.5px; }
-    .info-value { font-size:15px; font-weight:700; color:#1e2535; }
-    .info-value.destaque { color:#2563a8; }
-
-    .progress-bar-wrap { margin-bottom:20px; }
-    .progress-label { display:flex; justify-content:space-between; font-size:13px; font-weight:700; margin-bottom:8px; color:#1e2535; }
-    .progress-track { background:#e8eef5; border-radius:8px; height:14px; overflow:hidden; }
-    .progress-fill { height:14px; border-radius:8px; transition:width .5s; }
-
-    .timeline { display:flex; flex-direction:column; gap:0; }
-    .tl-item { display:flex; gap:16px; position:relative; padding-bottom:20px; }
-    .tl-item:last-child { padding-bottom:0; }
-    .tl-left { display:flex; flex-direction:column; align-items:center; flex-shrink:0; width:36px; }
-    .tl-icon { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; z-index:1; }
-    .tl-line { width:2px; flex:1; background:#e8eef5; margin-top:4px; }
-    .tl-item:last-child .tl-line { display:none; }
-    .tl-body { flex:1; padding-top:4px; }
-    .tl-titulo { font-size:14px; font-weight:700; color:#1e2535; }
-    .tl-desc { font-size:13px; color:#6b7280; margin-top:4px; line-height:1.5; }
-    .tl-meta { font-size:11px; color:#8492a6; margin-top:6px; display:flex; gap:12px; }
-
-    .badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; }
-
-    .entrega-comp { display:flex; gap:12px; flex-wrap:wrap; }
-    .entrega-box { flex:1; min-width:140px; border-radius:10px; padding:14px; text-align:center; }
-
-    .footer { text-align:center; padding:32px 20px; color:#8492a6; font-size:12px; }
-    .footer strong { color:#2563a8; }
-
-    .loading { text-align:center; padding:80px 20px; color:#8492a6; }
-    .loading .spinner { width:40px; height:40px; border:3px solid #e8eef5; border-top-color:#2563a8; border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 16px; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-
-    .erro { text-align:center; padding:80px 20px; }
-    .erro-icon { font-size:60px; margin-bottom:16px; }
-    .erro-titulo { font-size:22px; font-weight:800; color:#1a3a6b; margin-bottom:8px; }
-    .erro-sub { color:#8492a6; font-size:14px; }
-
-    @media(max-width:600px) {
-      .info-grid { grid-template-columns:1fr; }
-      .entrega-comp { flex-direction:column; }
-    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4f8;color:#1e2535;min-height:100vh}
+    .header{background:linear-gradient(135deg,#1a3a6b,#2563a8);padding:0 24px;position:sticky;top:0;z-index:100;box-shadow:0 4px 20px rgba(26,58,107,.3)}
+    .header-inner{max-width:800px;margin:0 auto;display:flex;align-items:center;padding:16px 0}
+    .logo{color:#fff;font-size:22px;font-weight:900;letter-spacing:1px}
+    .logo-sub{color:#56bfe9;font-size:9px;letter-spacing:3px;font-weight:700;display:block}
+    .main{max-width:800px;margin:0 auto;padding:28px 20px}
+    .card{background:#fff;border-radius:14px;padding:24px;box-shadow:0 2px 12px rgba(26,58,107,.08);border:1px solid #e8eef5;margin-bottom:20px}
+    .card-title{font-size:14px;font-weight:700;color:#1a3a6b;margin-bottom:16px}
+    .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .info-item{background:#f0f4f8;border-radius:10px;padding:12px 14px}
+    .info-label{font-size:11px;font-weight:700;color:#8492a6;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+    .info-value{font-size:15px;font-weight:700;color:#1e2535}
+    .info-value.blue{color:#2563a8}
+    .prog-wrap{margin-bottom:8px}
+    .prog-label{display:flex;justify-content:space-between;font-size:13px;font-weight:700;margin-bottom:8px}
+    .prog-track{background:#e8eef5;border-radius:8px;height:14px;overflow:hidden}
+    .prog-bar{height:14px;border-radius:8px;width:0%;transition:width 1.2s ease}
+    .tl{display:flex;flex-direction:column;gap:0}
+    .tl-item{display:flex;gap:16px;padding-bottom:20px;position:relative}
+    .tl-item:last-child{padding-bottom:0}
+    .tl-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:#eff6ff}
+    .tl-line{width:2px;background:#e8eef5;margin:4px auto 0;flex:1}
+    .tl-left{display:flex;flex-direction:column;align-items:center;width:36px;flex-shrink:0}
+    .tl-item:last-child .tl-line{display:none}
+    .tl-body{flex:1;padding-top:6px}
+    .tl-titulo{font-size:14px;font-weight:700;color:#1e2535}
+    .tl-desc{font-size:13px;color:#6b7280;margin-top:4px;line-height:1.5}
+    .tl-meta{font-size:11px;color:#8492a6;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap}
+    .status-banner{border-radius:14px;padding:20px 24px;margin-bottom:24px;display:flex;align-items:flex-start;gap:16px}
+    .entrega-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+    .entrega-box{border-radius:10px;padding:14px;text-align:center}
+    .loading{text-align:center;padding:80px 20px;color:#8492a6}
+    .spinner{width:40px;height:40px;border:3px solid #e8eef5;border-top-color:#2563a8;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .erro{text-align:center;padding:80px 20px}
+    .footer{text-align:center;padding:24px;color:#8492a6;font-size:12px}
+    @media(max-width:600px){.info-grid,.entrega-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-
 <div class="header">
   <div class="header-inner">
     <div>
-      <span class="logo-text">iNTEC</span>
+      <span class="logo">iNTEC</span>
       <span class="logo-sub">ENGENHARIA INTEGRADA</span>
     </div>
     <div style="margin-left:auto;color:rgba(255,255,255,.6);font-size:12px">Portal do Cliente</div>
@@ -89,20 +64,21 @@
 </div>
 
 <div class="footer">
-  Desenvolvido por <strong>INTEC Engenharia Integrada</strong> · Portal exclusivo para acompanhamento de projetos
+  Desenvolvido por <strong style="color:#2563a8">INTEC Engenharia Integrada</strong> &middot; Portal exclusivo para acompanhamento de projetos
 </div>
 
 <script>
-const STATUS_CONFIG = {
-  "Em andamento": { cor:"#2563a8", bg:"#e8f4fd", icone:"▶", emoji:"🔵" },
-  "CONCLUÍDO":    { cor:"#22c55e", bg:"#f0fdf4", icone:"✓", emoji:"✅" },
-  "PAUSADO":      { cor:"#f59e0b", bg:"#fffbeb", icone:"⏸", emoji:"⏸️" },
-  "ATRASADO":     { cor:"#ef4444", bg:"#fef2f2", icone:"⚠", emoji:"⚠️" },
-  "Novo/Definir": { cor:"#8492a6", bg:"#f8fafc", icone:"○", emoji:"⭕" },
-  "CANCELADO":    { cor:"#6b7280", bg:"#f3f4f6", icone:"✕", emoji:"❌" },
+var STATUS_CFG = {
+  "Em andamento": { cor:"#2563a8", bg:"#e8f4fd", emoji:"🔵" },
+  "CONCLUIDO":    { cor:"#22c55e", bg:"#f0fdf4", emoji:"✅" },
+  "CONCLUÍDO":    { cor:"#22c55e", bg:"#f0fdf4", emoji:"✅" },
+  "PAUSADO":      { cor:"#f59e0b", bg:"#fffbeb", emoji:"⏸️" },
+  "ATRASADO":     { cor:"#ef4444", bg:"#fef2f2", emoji:"⚠️" },
+  "Novo/Definir": { cor:"#8492a6", bg:"#f8fafc", emoji:"⭕" },
+  "CANCELADO":    { cor:"#6b7280", bg:"#f3f4f6", emoji:"❌" },
 };
 
-const TIPOS = {
+var TIPOS = {
   PE:"Projeto Estrutural", PR:"Projeto de Reforço", LT:"Laudo Técnico",
   CB:"Compatibilização", EL:"Projeto Elétrico", PH:"Projeto Hidrossanitário",
   PA:"Projeto Ar-Condicionado", PF:"Projeto de Fundação", CT:"Consultoria", RE:"Revisão",
@@ -110,8 +86,8 @@ const TIPOS = {
 
 function fmtData(d) {
   if (!d) return "—";
-  const [y,m,dd] = d.slice(0,10).split("-");
-  return `${dd}/${m}/${y}`;
+  var p = d.slice(0,10).split("-");
+  return p[2]+"/"+p[1]+"/"+p[0];
 }
 
 function diasAte(d) {
@@ -119,192 +95,146 @@ function diasAte(d) {
   return Math.ceil((new Date(d) - new Date()) / 86400000);
 }
 
-function fmtRelativo(iso) {
+function tempoRelativo(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
-  const diff = Math.floor((new Date() - d) / 86400000);
+  var d = new Date(iso);
+  var diff = Math.floor((new Date() - d) / 86400000);
   if (diff === 0) return "Hoje";
   if (diff === 1) return "Ontem";
-  if (diff < 7)  return `${diff} dias atrás`;
+  if (diff < 7)  return diff + " dias atrás";
   return fmtData(iso);
 }
 
+function corProg(p) {
+  if (p >= 80) return "#22c55e";
+  if (p >= 50) return "#f59e0b";
+  return "#2563a8";
+}
+
+function renderErro(msg) {
+  document.getElementById("app").innerHTML =
+    '<div class="erro">' +
+    '<div style="font-size:60px;margin-bottom:16px">🔒</div>' +
+    '<div style="font-size:22px;font-weight:800;color:#1a3a6b;margin-bottom:8px">Link não disponível</div>' +
+    '<div style="color:#8492a6;font-size:14px">' + (msg || "Este link não existe ou foi desativado.") + '</div>' +
+    '<div style="margin-top:24px;color:#8492a6;font-size:12px">Dúvidas? Entre em contato com a equipe INTEC.<br>' +
+    '<a href="mailto:direcao@engenhariaintec.com.br" style="color:#2563a8">direcao@engenhariaintec.com.br</a></div>' +
+    '</div>';
+}
+
 function render(dados) {
-  const app   = document.getElementById("app");
-  const st    = STATUS_CONFIG[dados.status] || STATUS_CONFIG["Novo/Definir"];
-  const dias  = diasAte(dados.dataEntregaPrevista);
-  const prog  = Math.min(100, Math.max(0, dados.progresso || 0));
-  const tipo  = TIPOS[dados.tipo] || dados.tipo || "";
+  var app  = document.getElementById("app");
+  var st   = STATUS_CFG[dados.status] || STATUS_CFG["Novo/Definir"];
+  var prog = Math.min(100, Math.max(0, dados.progresso || 0));
+  var tipo = TIPOS[dados.tipo] || dados.tipo || "";
+  var dias = diasAte(dados.dataEntregaPrevista);
+  var atus = dados.atualizacoes || [];
 
-  // Comparar entrega
-  let entregaInfo = "";
+  // ── Status banner ──
+  var bannerHTML =
+    '<div class="status-banner" style="background:' + st.bg + ';border:2px solid ' + st.cor + '30">' +
+    '<div style="font-size:36px;flex-shrink:0">' + st.emoji + '</div>' +
+    '<div style="flex:1">' +
+    '<div style="font-size:12px;font-weight:700;color:' + st.cor + ';margin-bottom:4px">STATUS ATUAL</div>' +
+    '<div style="font-size:20px;font-weight:900;color:' + st.cor + '">' + dados.status + '</div>' +
+    (dados.obs ? '<div style="margin-top:10px;padding:10px 14px;background:rgba(0,0,0,0.05);border-radius:8px;font-size:13px;color:#374151;border-left:3px solid ' + st.cor + '">💬 ' + dados.obs + '</div>' : '') +
+    '</div></div>';
+
+  // ── Informações ──
+  var prazoInfo = "";
+  if (dados.dataEntregaPrevista && !dados.dataEntregaReal && dias !== null) {
+    if (dias < 0) prazoInfo = ' <span style="color:#ef4444;font-size:11px;font-weight:700">(' + Math.abs(dias) + 'd atrasado)</span>';
+    else if (dias === 0) prazoInfo = ' <span style="color:#f59e0b;font-size:11px;font-weight:700">(vence hoje!)</span>';
+    else prazoInfo = ' <span style="color:#8492a6;font-size:11px">(' + dias + 'd restantes)</span>';
+  }
+
+  var infoHTML =
+    '<div class="card">' +
+    '<div class="card-title">📋 Informações do Projeto</div>' +
+    '<div class="info-grid">' +
+    '<div class="info-item"><div class="info-label">Código</div><div class="info-value blue">' + dados.codigo + '</div></div>' +
+    '<div class="info-item"><div class="info-label">Tipo</div><div class="info-value">' + tipo + '</div></div>' +
+    '<div class="info-item" style="grid-column:1/-1"><div class="info-label">Projeto</div><div class="info-value">' + dados.cliente + '</div></div>' +
+    (dados.dataContrato ? '<div class="info-item"><div class="info-label">Data do Contrato</div><div class="info-value">' + fmtData(dados.dataContrato) + '</div></div>' : '') +
+    (dados.dataEntregaPrevista ? '<div class="info-item"><div class="info-label">Entrega Prevista' + prazoInfo + '</div><div class="info-value">' + fmtData(dados.dataEntregaPrevista) + '</div></div>' : '') +
+    '</div></div>';
+
+  // ── Progresso ──
+  var entregaComp = "";
   if (dados.dataEntregaReal && dados.dataEntregaPrevista) {
-    const atraso = Math.ceil((new Date(dados.dataEntregaReal) - new Date(dados.dataEntregaPrevista)) / 86400000);
-    if (atraso <= 0) entregaInfo = `<span style="color:#22c55e;font-weight:700">✓ Entregue no prazo (${Math.abs(atraso)}d antes)</span>`;
-    else             entregaInfo = `<span style="color:#ef4444;font-weight:700">⚠ Entregue com ${atraso}d de atraso</span>`;
+    var atraso = Math.ceil((new Date(dados.dataEntregaReal) - new Date(dados.dataEntregaPrevista)) / 86400000);
+    var entResultado = atraso <= 0
+      ? '<div style="text-align:center;margin-top:12px;color:#22c55e;font-weight:700">✓ Entregue no prazo (' + Math.abs(atraso) + 'd antes)</div>'
+      : '<div style="text-align:center;margin-top:12px;color:#ef4444;font-weight:700">⚠ Entregue com ' + atraso + 'd de atraso</div>';
+    entregaComp =
+      '<div class="entrega-grid">' +
+      '<div class="entrega-box" style="background:#f0fdf4;border:1px solid #86efac"><div style="font-size:11px;color:#166534;font-weight:700;margin-bottom:4px">ENTREGA PREVISTA</div><div style="font-size:18px;font-weight:800;color:#166534">' + fmtData(dados.dataEntregaPrevista) + '</div></div>' +
+      '<div class="entrega-box" style="background:#eff6ff;border:1px solid #bfdbfe"><div style="font-size:11px;color:#1d4ed8;font-weight:700;margin-bottom:4px">ENTREGA REAL</div><div style="font-size:18px;font-weight:800;color:#1d4ed8">' + fmtData(dados.dataEntregaReal) + '</div></div>' +
+      '</div>' + entResultado;
   }
 
-  // Timeline
-  const atualizacoes = dados.atualizacoes || [];
-  const timelineHTML = atualizacoes.length === 0
-    ? `<p style="color:#8492a6;text-align:center;padding:20px">Nenhuma atualização registrada ainda.</p>`
-    : atualizacoes.map(a => {
-        const cores = {
-          manual:  { bg:"#eff6ff", icon:"📝" },
-          sessao:  { bg:"#f0fdf4", icon:"⚙️" },
-          status:  { bg:"#fff7ed", icon:"🔄" },
-          entrega: { bg:"#faf5ff", icon:"📦" },
-          pausa:   { bg:"#fffbeb", icon:"⏸️" },
-          retorno: { bg:"#f0fdf4", icon:"▶️" },
-        };
-        const cfg = cores[a.tipo] || cores.manual;
-        const icone = a.icone || cfg.icon;
-        return `
-          <div class="tl-item">
-            <div class="tl-left">
-              <div class="tl-icon" style="background:${cfg.bg};font-size:18px">${icone}</div>
-              <div class="tl-line"></div>
-            </div>
-            <div class="tl-body">
-              <div class="tl-titulo">${a.titulo || "Atualização"}</div>
-              ${a.descricao ? `<div class="tl-desc">${a.descricao}</div>` : ""}
-              <div class="tl-meta">
-                ${a.autor ? `<span>👤 ${a.autor}</span>` : ""}
-                <span>📅 ${fmtRelativo(a.data)}</span>
-              </div>
-            </div>
-          </div>`;
-      }).join("");
+  var progHTML =
+    '<div class="card">' +
+    '<div class="card-title">📊 Progresso do Projeto</div>' +
+    '<div class="prog-wrap">' +
+    '<div class="prog-label"><span>Conclusão</span><span id="prog-pct" style="color:' + corProg(prog) + ';font-size:18px">' + prog + '%</span></div>' +
+    '<div class="prog-track"><div id="prog-bar" class="prog-bar" style="background:' + corProg(prog) + '"></div></div>' +
+    '</div>' + entregaComp + '</div>';
 
-  // Status banner color
-  const bannerBg = st.bg;
-  const bannerCor = st.cor;
-
-  // Prazo info
-  let prazoInfo = "";
-  if (dados.dataEntregaPrevista && !dados.dataEntregaReal) {
-    if (dias === null) prazoInfo = "";
-    else if (dias < 0) prazoInfo = `<span style="color:#ef4444;font-size:12px;font-weight:700">${Math.abs(dias)} dias em atraso</span>`;
-    else if (dias === 0) prazoInfo = `<span style="color:#f59e0b;font-size:12px;font-weight:700">Vence hoje!</span>`;
-    else prazoInfo = `<span style="color:#8492a6;font-size:12px">${dias} dias restantes</span>`;
+  // ── Timeline ──
+  var timelineItens = "";
+  if (atus.length === 0) {
+    timelineItens = '<p style="color:#8492a6;text-align:center;padding:20px">Nenhuma atualização registrada ainda.</p>';
+  } else {
+    for (var i = 0; i < atus.length; i++) {
+      var a = atus[i];
+      var icone = a.icone || "📝";
+      timelineItens +=
+        '<div class="tl-item">' +
+        '<div class="tl-left"><div class="tl-icon">' + icone + '</div><div class="tl-line"></div></div>' +
+        '<div class="tl-body">' +
+        '<div class="tl-titulo">' + (a.titulo || "Atualização") + '</div>' +
+        (a.descricao ? '<div class="tl-desc">' + a.descricao + '</div>' : '') +
+        '<div class="tl-meta">' +
+        (a.autor ? '<span>👤 ' + a.autor + '</span>' : '') +
+        '<span>📅 ' + tempoRelativo(a.data) + '</span>' +
+        '</div></div></div>';
+    }
   }
 
-  app.innerHTML = `
-    <!-- Banner de status -->
-    <div class="status-banner" style="background:${bannerBg};border:2px solid ${bannerCor}30">
-      <div class="status-icon">${st.emoji}</div>
-      <div>
-        <div class="status-label" style="color:${bannerCor}">STATUS ATUAL</div>
-        <div class="status-value" style="color:${bannerCor}">${dados.status}</div>
-        ${dados.obs ? `<div style="margin-top:10px;padding:10px 14px;background:rgba(255,255,255,0.2);border-radius:8px;font-size:13px;color:#1e2535;font-style:italic;border-left:3px solid ${st.cor}">💬 ${dados.obs}</div>` : ""}
-      </div>
-    </div>
+  var tlHTML =
+    '<div class="card">' +
+    '<div class="card-title">🕐 Histórico de Atualizações</div>' +
+    '<div class="tl">' + timelineItens + '</div></div>';
 
-    <!-- Informações do projeto -->
-    <div class="card">
-      <div class="card-title">📋 Informações do Projeto</div>
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">Código</div>
-          <div class="info-value destaque">${dados.codigo}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Tipo</div>
-          <div class="info-value">${tipo}</div>
-        </div>
-        <div class="info-item" style="grid-column:1/-1">
-          <div class="info-label">Projeto</div>
-          <div class="info-value">${dados.cliente}</div>
-        </div>
-        ${dados.dataContrato ? `
-        <div class="info-item">
-          <div class="info-label">Data do Contrato</div>
-          <div class="info-value">${fmtData(dados.dataContrato)}</div>
-        </div>` : ""}
-        ${dados.dataEntregaPrevista ? `
-        <div class="info-item">
-          <div class="info-label">Entrega Prevista ${prazoInfo}</div>
-          <div class="info-value">${fmtData(dados.dataEntregaPrevista)}</div>
-        </div>` : ""}
-      </div>
-    </div>
+  var ultimaAtu = atus.length > 0 ? tempoRelativo(atus[0].data) : "Hoje";
+  var rodape =
+    '<div style="text-align:center;color:#8492a6;font-size:11px;padding:8px 0 24px">' +
+    'Última atualização: ' + ultimaAtu + ' &nbsp;·&nbsp; ' +
+    '<a href="#" onclick="location.reload();return false;" style="color:#2563a8;text-decoration:none">🔄 Atualizar</a>' +
+    '</div>';
 
-    <!-- Progresso -->
-    <div class="card">
-      <div class="card-title">📊 Progresso do Projeto</div>
-      <div class="progress-bar-wrap">
-        <div class="progress-label">
-          <span>Conclusão do Projeto</span>
-          <span id="prog-pct" style="color:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"};font-size:18px">${prog}%</span>
-        </div>
-        <div class="progress-track">
-          <div id="prog-bar" style="height:14px;border-radius:8px;width:0%;background:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"};transition:width 1s ease"></div>
-        </div>
-        <script>
-          setTimeout(()=>{ const b=document.getElementById('prog-bar'); if(b) b.style.width='${prog}%'; },100);
-        </script>
-      </div>
-      ${prog > 0 ? `<div style="margin-top:8px;background:#f0f4f8;border-radius:8px;height:6px"><div style="height:6px;border-radius:8px;width:${prog}%;background:${prog>=80?"#22c55e":prog>=50?"#f59e0b":"#2563a8"}"></div></div>` : ""}
+  app.innerHTML = bannerHTML + infoHTML + progHTML + tlHTML + rodape;
 
-      ${dados.dataEntregaReal ? `
-      <div class="entrega-comp">
-        <div class="entrega-box" style="background:#f0fdf4;border:1px solid #86efac">
-          <div style="font-size:11px;color:#166534;font-weight:700;margin-bottom:4px">ENTREGA PREVISTA</div>
-          <div style="font-size:18px;font-weight:800;color:#166534">${fmtData(dados.dataEntregaPrevista)}</div>
-        </div>
-        <div class="entrega-box" style="background:#eff6ff;border:1px solid #bfdbfe">
-          <div style="font-size:11px;color:#1d4ed8;font-weight:700;margin-bottom:4px">ENTREGA REAL</div>
-          <div style="font-size:18px;font-weight:800;color:#1d4ed8">${fmtData(dados.dataEntregaReal)}</div>
-        </div>
-      </div>
-      ${entregaInfo ? `<div style="text-align:center;margin-top:12px;font-size:14px">${entregaInfo}</div>` : ""}
-      ` : ""}
-    </div>
-
-    <!-- Timeline -->
-    <div class="card">
-      <div class="card-title">🕐 Histórico de Atualizações</div>
-      <div class="timeline">${timelineHTML}</div>
-    </div>
-
-    <div style="text-align:center;color:#8492a6;font-size:11px;padding:8px 0">
-      Última atualização: ${fmtRelativo(atualizacoes[0]?.data || new Date().toISOString())}
-      &nbsp;·&nbsp;
-      <a href="#" onclick="location.reload()" style="color:#2563a8;text-decoration:none">🔄 Atualizar</a>
-    </div>
-  \`;
   // Animar barra de progresso após render
-  requestAnimationFrame(()=>{
-    requestAnimationFrame(()=>{
-      const bar = document.getElementById('prog-bar');
-      if(bar) bar.style.width = prog + '%';
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      var bar = document.getElementById("prog-bar");
+      if (bar) bar.style.width = prog + "%";
     });
   });
 }
 
-function renderErro(msg) {
-  document.getElementById("app").innerHTML = `
-    <div class="erro">
-      <div class="erro-icon">🔒</div>
-      <div class="erro-titulo">Link não disponível</div>
-      <div class="erro-sub">${msg || "Este link não existe ou foi desativado."}</div>
-      <div style="margin-top:24px;color:#8492a6;font-size:12px">
-        Dúvidas? Entre em contato com a equipe INTEC.<br>
-        <a href="mailto:direcao@engenhariaintec.com.br" style="color:#2563a8">direcao@engenhariaintec.com.br</a>
-      </div>
-    </div>`;
-}
-
-// Pegar token da URL: /cliente/TOKEN
 async function init() {
-  const partes = window.location.pathname.split("/");
-  const token  = partes[partes.indexOf("cliente") + 1] || new URLSearchParams(window.location.search).get("token");
-
+  var partes = window.location.pathname.split("/");
+  var idx    = partes.indexOf("cliente");
+  var token  = idx >= 0 ? partes[idx + 1] : null;
+  if (!token) token = new URLSearchParams(window.location.search).get("token");
   if (!token) { renderErro("Token não informado na URL."); return; }
 
   try {
-    const res  = await fetch(`/api/cliente?token=${encodeURIComponent(token)}`);
-    const data = await res.json();
+    var res  = await fetch("/api/cliente?token=" + encodeURIComponent(token));
+    var data = await res.json();
     if (!res.ok) { renderErro(data.error || "Erro ao carregar."); return; }
     render(data);
   } catch(e) {
@@ -313,8 +243,6 @@ async function init() {
 }
 
 init();
-
-// Auto-refresh a cada 2 minutos
 setInterval(init, 2 * 60 * 1000);
 </script>
 </body>
