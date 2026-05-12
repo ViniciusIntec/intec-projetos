@@ -60,9 +60,9 @@ const STATUS_CONFIG = {
 const STATUS_ALIAS = { "Concluído":"CONCLUÍDO", "concluído":"CONCLUÍDO", "Cancelado":"CANCELADO" };
 
 const TIPOS = {
-  PE:"Proj. Estrutural", PR:"Proj. Reforço", LT:"Laudo Técnico",
-  CB:"Compatibilização", EL:"Proj. Elétrico", PH:"Proj. Hidrossanitário",
-  PA:"Proj. Ar-condic.", PF:"Proj. Fundação", CT:"Consultoria", RE:"Revisão",
+  PE:"Proj. Estrutural",   PR:"Proj. Reforço",        LT:"Laudo Técnico",
+  CB:"Compatibilização",   EL:"Proj. Elétrico",        PH:"Proj. Hidrossanitário",
+  PA:"Proj. Arquitetônico", PF:"Proj. Fundação",       CT:"Consultoria", RE:"Revisão",
 };
 
 // Disciplinas disponíveis para projetos de Compatibilização (CB)
@@ -3443,16 +3443,30 @@ function PainelEntregas({ projetos, onAbrirProjeto }) {
 function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
   const [abaD,setAbaD] = useState("visao");
   const isColab = usuarioAtual?.perfil==="colaborador";
-  const ativos=projetos.filter(p=>!["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
-  const porStatus={};projetos.forEach(p=>{const s=statusN(p.status);porStatus[s]=(porStatus[s]||0)+1;});
-  const recTotal=projetos.reduce((a,p)=>a+(p.parcelas||[]).reduce((b,x)=>b+x.valor,0),0);
-  const recRecebida=projetos.reduce((a,p)=>a+(p.parcelas||[]).reduce((b,x)=>b+(x.pago?x.valor:0),0),0);
-  const porTipo={};projetos.forEach(p=>{porTipo[p.tipo]=(porTipo[p.tipo]||0)+1;});
+  // Para colaboradores: filtrar apenas projetos onde é responsável
+  const ehMeuProj = p => !isColab || p.responsavel===usuarioAtual?.nome
+    || p.coresponsavel===usuarioAtual?.nome
+    || p.coresponsavel2===usuarioAtual?.nome
+    || p.coresponsavel3===usuarioAtual?.nome;
+  const projetosVisiveis = projetos.filter(ehMeuProj);
+
+  const ativos=projetosVisiveis.filter(p=>!["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
+  const porStatus={};projetosVisiveis.forEach(p=>{const s=statusN(p.status);porStatus[s]=(porStatus[s]||0)+1;});
+  const recTotal=projetosVisiveis.reduce((a,p)=>a+(p.parcelas||[]).reduce((b,x)=>b+x.valor,0),0);
+  const recRecebida=projetosVisiveis.reduce((a,p)=>a+(p.parcelas||[]).reduce((b,x)=>b+(x.pago?x.valor:0),0),0);
+  const porTipo={};projetosVisiveis.forEach(p=>{porTipo[p.tipo]=(porTipo[p.tipo]||0)+1;});
   const semC=ativos.filter(p=>!p.temContrato);
   const totalAlertas=ativos.filter(p=>!p.temContrato||statusN(p.status)==="ATRASADO"||(()=>{const d=diasAte(p.dataEntregaPrevista);return d!==null&&d<=14;})()).length;
 
   return(<div style={{display:"flex",flexDirection:"column",gap:20}}>
     {/* Sub-abas do Dashboard */}
+    {isColab&&(
+      <div style={{padding:"12px 16px",background:"#eff6ff",borderRadius:10,border:`1px solid ${C.azulClaro}`,marginBottom:-4}}>
+        <span style={{fontSize:13,color:C.azulMedio,fontWeight:600}}>
+          👤 Exibindo projetos atribuídos a <strong>{usuarioAtual?.nome}</strong>
+        </span>
+      </div>
+    )}
     <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.cinzaCard}`,paddingBottom:0}}>
       {[
         {id:"visao",   label:"📊 Visão Geral"},
@@ -3465,11 +3479,11 @@ function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
       ))}
     </div>
 
-    {abaD==="alertas"   && <PainelAlertas projetos={projetos} onAbrirProjeto={onAbrirProjeto}/>}
-    {abaD==="entregas"  && <PainelEntregas projetos={projetos} onAbrirProjeto={onAbrirProjeto}/>}
+    {abaD==="alertas"   && <PainelAlertas projetos={projetosVisiveis} onAbrirProjeto={onAbrirProjeto}/>}
+    {abaD==="entregas"  && <PainelEntregas projetos={projetosVisiveis} onAbrirProjeto={onAbrirProjeto}/>}
 
     {abaD==="visao" && <>
-      <PainelDrive drive={drive} projetosExistentes={projetos} onImportar={onImportar}/>
+      {!isColab && <PainelDrive drive={drive} projetosExistentes={projetos} onImportar={onImportar}/>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:16}}>
         {[{label:"Ativos",valor:ativos.length,cor:C.azulMedio,i:"📂"},{label:"Concluídos",valor:porStatus["CONCLUÍDO"]||0,cor:C.verde,i:"✅"},{label:"Atrasados",valor:porStatus["ATRASADO"]||0,cor:C.vermelho,i:"⚠️"},{label:"Pausados",valor:porStatus["PAUSADO"]||0,cor:C.amarelo,i:"⏸"}].map(k=>(
           <Card key={k.label} style={{textAlign:"center",borderTop:`3px solid ${k.cor}`}}><div style={{fontSize:26}}>{k.i}</div><div style={{fontSize:34,fontWeight:800,color:k.cor,lineHeight:1}}>{k.valor}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600,marginTop:4}}>{k.label}</div></Card>
@@ -3478,7 +3492,31 @@ function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
         <Card style={{textAlign:"center",borderTop:`3px solid ${C.laranja}`}}><div style={{fontSize:26}}>📋</div><div style={{fontSize:34,fontWeight:800,color:C.laranja,lineHeight:1}}>{semC.length}</div><div style={{fontSize:12,color:C.cinzaClaro,fontWeight:600,marginTop:4}}>Sem Contrato</div></Card>
       </div>
       <Card><h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14,fontWeight:700}}>📊 Projetos por Tipo</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>{Object.entries(porTipo).sort((a,b)=>b[1]-a[1]).map(([tipo,qtd])=><div key={tipo} style={{padding:"10px 14px",background:C.cinzaFundo,borderRadius:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:12,fontWeight:800,color:C.azulEscuro}}>{tipo}</div><div style={{fontSize:10,color:C.cinzaClaro}}>{TIPOS[tipo]||tipo}</div></div><span style={{fontSize:22,fontWeight:800,color:C.azulMedio}}>{qtd}</span></div>)}</div></Card>
-      <div><h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14,fontWeight:700}}>🔥 Projetos em Aberto</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>{ativos.slice(0,8).map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}</div></div>
+      {(()=>{
+        // Colaborador vê só os seus; gestor/admin vê todos
+        const ehMeu = p => p.responsavel===usuarioAtual?.nome || p.coresponsavel===usuarioAtual?.nome
+          || p.coresponsavel2===usuarioAtual?.nome || p.coresponsavel3===usuarioAtual?.nome;
+        const minhaLista = isColab ? ativos.filter(ehMeu) : ativos;
+        if (minhaLista.length === 0) return (
+          <div style={{padding:"24px",background:C.cinzaFundo,borderRadius:12,textAlign:"center",color:C.cinzaClaro}}>
+            <div style={{fontSize:32,marginBottom:8}}>✅</div>
+            <div style={{fontWeight:700,fontSize:14}}>Nenhum projeto em aberto atribuído a você</div>
+          </div>
+        );
+        return (
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>
+                🔥 {isColab?"Meus Projetos em Aberto":"Projetos em Aberto"}
+              </h3>
+              <span style={{fontSize:11,color:C.cinzaClaro}}>{minhaLista.length} projeto(s)</span>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+              {minhaLista.slice(0,8).map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}
+            </div>
+          </div>
+        );
+      })()}
     </>}
   </div>);
 }
