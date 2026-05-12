@@ -89,6 +89,8 @@ const calcHorasDiaSemana = (diaExp) => {
     ? Math.max(0, (horaMin(diaExp.turno1.fim) - horaMin(diaExp.turno1.inicio)) / 60) : 0;
   const h2 = diaExp.turno2?.ativo && diaExp.turno2?.inicio && diaExp.turno2?.fim
     ? Math.max(0, (horaMin(diaExp.turno2.fim) - horaMin(diaExp.turno2.inicio)) / 60) : 0;
+  // Modo OU: conta só o maior turno (estagiário que vem manhã OU tarde)
+  if (diaExp.turno2?.ativo && diaExp.modo === "OU") return Math.round(Math.max(h1, h2) * 10) / 10;
   return Math.round((h1 + h2) * 10) / 10;
 };
 
@@ -1792,31 +1794,74 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
                 </label>
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {["segunda","terca","quarta","quinta","sexta","sabado","domingo"].map((dia,idx)=>{
-                    const exp = form.expediente?.[dia] || {ativo:false,turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:false,inicio:"14:00",fim:"18:00"}};
+                    const exp    = form.expediente?.[dia] || {ativo:false,turno1:{inicio:"09:00",fim:"12:00"},turno2:{ativo:false,inicio:"14:00",fim:"18:00"},modo:"E"};
+                    const modo   = exp.modo || "E";
                     const setDia = (campo,val) => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,[campo]:val}}}));
                     const setT1  = (campo,val) => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,turno1:{...exp.turno1,[campo]:val}}}}));
                     const setT2  = (campo,val) => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,turno2:{...exp.turno2,[campo]:val}}}}));
+                    const setModo= (val)       => setForm(f=>({...f,expediente:{...f.expediente,[dia]:{...exp,modo:val}}}));
                     const hDia   = calcHorasDiaSemana(exp);
+                    const h1 = exp.turno1?.inicio&&exp.turno1?.fim ? Math.max(0,(horaMin(exp.turno1.fim)-horaMin(exp.turno1.inicio))/60) : 0;
+                    const h2 = exp.turno2?.ativo&&exp.turno2?.inicio&&exp.turno2?.fim ? Math.max(0,(horaMin(exp.turno2.fim)-horaMin(exp.turno2.inicio))/60) : 0;
                     return (
                       <div key={dia} style={{border:`1.5px solid ${exp.ativo?C.azulClaro:C.cinzaCard}`,borderRadius:10,padding:"10px 14px",background:exp.ativo?"#f0f9ff":"#f8fafc",transition:"all 0.15s"}}>
+                        {/* Cabeçalho do dia */}
                         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:exp.ativo?10:0}}>
                           <input type="checkbox" checked={!!exp.ativo} onChange={e=>setDia("ativo",e.target.checked)} style={{width:15,height:15,cursor:"pointer"}}/>
                           <span style={{fontSize:13,fontWeight:700,color:exp.ativo?C.azulMedio:C.cinzaClaro,minWidth:70}}>{DIAS_LABEL[idx]}</span>
-                          {exp.ativo&&<span style={{fontSize:11,color:C.verde,fontWeight:700}}>{hDia}h</span>}
+                          {exp.ativo&&<span style={{fontSize:12,color:C.verde,fontWeight:700}}>{hDia}h/dia</span>}
+                          {exp.ativo&&exp.turno2?.ativo&&(
+                            <span style={{marginLeft:"auto",fontSize:10,background:modo==="OU"?"#fff7ed":"#eff6ff",color:modo==="OU"?"#c2410c":C.azulMedio,padding:"2px 8px",borderRadius:4,fontWeight:700,border:`1px solid ${modo==="OU"?"#fed7aa":"#bfdbfe"}`}}>
+                              {modo==="OU"?"🔀 OU":"🔁 E"}
+                            </span>
+                          )}
                           {!exp.ativo&&<span style={{fontSize:11,color:C.cinzaClaro}}>Não trabalha</span>}
                         </div>
+
                         {exp.ativo&&(
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,alignItems:"end"}}>
-                            <Inp label="Manhã entrada" value={exp.turno1?.inicio||""} onChange={v=>setT1("inicio",v)} type="time"/>
-                            <Inp label="Manhã saída"   value={exp.turno1?.fim||""}   onChange={v=>setT1("fim",v)}   type="time"/>
-                            <div>
-                              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                                <input type="checkbox" checked={!!exp.turno2?.ativo} onChange={e=>setT2("ativo",e.target.checked)} style={{cursor:"pointer"}}/>
-                                <label style={{fontSize:11,color:C.cinzaEscuro,cursor:"pointer",fontWeight:600}}>Tarde</label>
-                              </div>
-                              <Inp label="" value={exp.turno2?.inicio||""} onChange={v=>setT2("inicio",v)} type="time" readOnly={!exp.turno2?.ativo}/>
+                          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                            {/* Turno 1 — manhã */}
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                              <Inp label="Manhã — entrada" value={exp.turno1?.inicio||""} onChange={v=>setT1("inicio",v)} type="time"/>
+                              <Inp label="Manhã — saída"   value={exp.turno1?.fim||""}   onChange={v=>setT1("fim",v)}   type="time"/>
                             </div>
-                            <Inp label="Tarde saída" value={exp.turno2?.fim||""} onChange={v=>setT2("fim",v)} type="time" readOnly={!exp.turno2?.ativo}/>
+
+                            {/* Turno 2 — tarde */}
+                            <div style={{background:"#f8fafc",borderRadius:8,padding:"8px 10px",border:`1px solid ${exp.turno2?.ativo?C.azulClaro:C.cinzaCard}`}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:exp.turno2?.ativo?8:0}}>
+                                <input type="checkbox" checked={!!exp.turno2?.ativo} onChange={e=>setT2("ativo",e.target.checked)} style={{cursor:"pointer"}}/>
+                                <label style={{fontSize:12,fontWeight:600,color:exp.turno2?.ativo?C.azulMedio:C.cinzaClaro,cursor:"pointer"}}>
+                                  {exp.turno2?.ativo?"✓ Tarde ativo":"+ Adicionar turno tarde"}
+                                </label>
+                                {exp.turno2?.ativo&&h2>0&&<span style={{fontSize:11,color:C.cinzaClaro}}>{h2.toFixed(1)}h</span>}
+                              </div>
+
+                              {exp.turno2?.ativo&&(<>
+                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                                  <Inp label="Tarde — entrada" value={exp.turno2?.inicio||""} onChange={v=>setT2("inicio",v)} type="time"/>
+                                  <Inp label="Tarde — saída"   value={exp.turno2?.fim||""}   onChange={v=>setT2("fim",v)}   type="time"/>
+                                </div>
+
+                                {/* Seletor E / OU */}
+                                <div style={{display:"flex",gap:6}}>
+                                  {[
+                                    {val:"E",  label:"🔁 Manhã E Tarde",  sub:`${(h1+h2).toFixed(1)}h/dia contabilizadas`},
+                                    {val:"OU", label:"🔀 Manhã OU Tarde", sub:`${Math.max(h1,h2).toFixed(1)}h/dia (flexível)`},
+                                  ].map(opt=>(
+                                    <div key={opt.val} onClick={()=>setModo(opt.val)}
+                                      style={{flex:1,padding:"7px 10px",borderRadius:8,border:`2px solid ${modo===opt.val?C.azulMedio:C.cinzaCard}`,background:modo===opt.val?C.azulEscuro:"white",cursor:"pointer",transition:"all 0.15s",textAlign:"center"}}>
+                                      <div style={{fontSize:12,fontWeight:700,color:modo===opt.val?C.branco:C.cinzaEscuro}}>{opt.label}</div>
+                                      <div style={{fontSize:10,color:modo===opt.val?C.ciano:C.cinzaClaro,marginTop:2}}>{opt.sub}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {modo==="OU"&&(
+                                  <div style={{marginTop:6,padding:"5px 8px",background:"#fffbeb",borderRadius:6,fontSize:11,color:"#92400e"}}>
+                                    ℹ️ Conta apenas 1 turno por dia na meta — aceita registro em qualquer um
+                                  </div>
+                                )}
+                              </>)}
+                            </div>
                           </div>
                         )}
                       </div>
