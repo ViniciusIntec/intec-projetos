@@ -866,6 +866,53 @@ async function gerarRelatorioPDF({ usuario, registrosFiltrados, projetos, mes, s
 }
 
 // ─── PRODUTIVIDADE ────────────────────────────────────────────────────────────
+
+// ─── ABA HORAS & PRODUTIVIDADE ────────────────────────────────────────────────
+function AbaHoras({ registros, setRegistros, usuarios, projetos, usuarioAtual, calendario, onAbrirEncerramento }) {
+  const [subAba, setSubAba] = useState("horas");
+  return (
+    <div>
+      <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:`2px solid ${C.cinzaCard}`}}>
+        {[{id:"horas",label:"⏱ Banco de Horas"},{id:"produtividade",label:"📈 Produtividade"}].map(t=>(
+          <button key={t.id} onClick={()=>setSubAba(t.id)}
+            style={{background:"none",border:"none",padding:"12px 20px",cursor:"pointer",fontSize:14,
+              fontFamily:"inherit",fontWeight:subAba===t.id?700:500,
+              color:subAba===t.id?C.azulMedio:C.cinzaClaro,
+              borderBottom:subAba===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",
+              marginBottom:-2,transition:"all 0.15s"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {subAba==="horas"        &&<BancoHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={usuarioAtual} onAbrirEncerramento={onAbrirEncerramento}/>}
+      {subAba==="produtividade"&&<Produtividade registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={usuarioAtual} calendario={calendario}/>}
+    </div>
+  );
+}
+
+// ─── ABA AGENDA & ESCALAS ─────────────────────────────────────────────────────
+function AbaAgenda({ calendario, usuarioAtual, registros, usuarios }) {
+  const [subAba, setSubAba] = useState("calendario");
+  return (
+    <div>
+      <div style={{display:"flex",gap:0,marginBottom:24,borderBottom:`2px solid ${C.cinzaCard}`}}>
+        {[{id:"calendario",label:"📅 Calendário"},{id:"escalas",label:"📋 Escalas"}].map(t=>(
+          <button key={t.id} onClick={()=>setSubAba(t.id)}
+            style={{background:"none",border:"none",padding:"12px 20px",cursor:"pointer",fontSize:14,
+              fontFamily:"inherit",fontWeight:subAba===t.id?700:500,
+              color:subAba===t.id?C.azulMedio:C.cinzaClaro,
+              borderBottom:subAba===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",
+              marginBottom:-2,transition:"all 0.15s"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {subAba==="calendario"&&<ModuloCalendario calendario={calendario} usuarioAtual={usuarioAtual} registros={registros} usuarios={usuarios}/>}
+      {subAba==="escalas"   &&<Escalas usuarioAtual={usuarioAtual} usuarios={usuarios}/>}
+    </div>
+  );
+}
+
 function Produtividade({ registros, usuarios, projetos, usuarioAtual, calendario }) {
   const [filtroUser, setFU] = useState(
     usuarioAtual.perfil === 'colaborador' ? usuarioAtual.id : 'todos'
@@ -4522,56 +4569,157 @@ export default function App(){
   const isAdmin    = user.perfil === "admin";
   const isGestorOuAdmin = ["admin","gestor"].includes(user.perfil);
   const isColab    = user.perfil === "colaborador";
+  const [menuAberto, setMenuAberto] = useState(false);
 
-  const abas=[
-    {id:"dashboard",    label:"Dashboard",       icone:"📊"},
-    {id:"projetos",     label:"Projetos",         icone:"📁"},
+  // Abas principais (topbar) — só as mais usadas
+  const abasPrincipais=[
+    {id:"dashboard",    label:"Dashboard",   icone:"📊"},
+    {id:"projetos",     label:"Projetos",    icone:"📁"},
     ...(!isColab ? [{id:"financeiro", label:"Financeiro", icone:"💰"}] : []),
-    {id:"horas",        label:"Banco de Horas",   icone:"⏱"},
-    {id:"produtividade",label:"Produtividade",    icone:"📈"},
-    {id:"calendario",   label:"Calendario",       icone:"📅"},
-    {id:"escalas",      label:"Escalas",          icone:"📋"},
-    {id:"chat",         label:"Chat",             icone:"💬"},
-    {id:"config",       label:"Configuracoes",    icone:"⚙"},
+    {id:"horas",        label:"Horas",       icone:"⏱"},
+    {id:"agenda",       label:"Agenda",      icone:"📅"},
+    {id:"chat",         label:"Chat",        icone:"💬"},
   ];
+
+  // Abas no menu lateral
+  const abasMenu=[
+    {id:"dashboard",    label:"Dashboard",        icone:"📊", grupo:"principal"},
+    {id:"projetos",     label:"Projetos",          icone:"📁", grupo:"principal"},
+    ...(!isColab ? [{id:"financeiro", label:"Financeiro", icone:"💰", grupo:"principal"}] : []),
+    {id:"horas",        label:"Horas & Produtividade", icone:"⏱", grupo:"horas"},
+    {id:"agenda",       label:"Agenda & Escalas",  icone:"📅", grupo:"agenda"},
+    {id:"chat",         label:"Chat",              icone:"💬", grupo:"principal"},
+    {id:"config",       label:"Configurações",     icone:"⚙",  grupo:"config"},
+  ];
+
+  const abas = abasPrincipais; // compat
 
   return(
     <div style={{minHeight:"100vh",background:C.cinzaFundo,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-      <div style={{background:`linear-gradient(135deg,${C.azulEscuro},${C.azulMedio})`,padding:"0 24px",boxShadow:"0 4px 20px rgba(26,58,107,0.3)",position:"sticky",top:0,zIndex:100}}>
-        <div style={{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center"}}>
-          <div style={{padding:"14px 24px 14px 0",borderRight:`1px solid rgba(255,255,255,0.15)`,marginRight:24}}>
-            <svg width="90" height="36" viewBox="0 0 220 80"><circle cx="28" cy="14" r="7" fill="none" stroke="#56bfe9" strokeWidth="3.5"/><path d="M21 28 Q21 52 28 52 Q35 52 35 28" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"/><path d="M35 28 Q35 14 55 14 L80 52" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"/><path d="M80 14 L80 52" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"/><text x="95" y="45" fill="white" fontSize="36" fontWeight="800" fontFamily="'Segoe UI',sans-serif" letterSpacing="2">NTEC</text></svg>
-            <div style={{color:C.ciano,fontSize:9,letterSpacing:3,fontWeight:700,marginTop:-4}}>ENGENHARIA INTEGRADA</div>
+      {/* ── NAVBAR ── */}
+      <div style={{background:`linear-gradient(135deg,${C.azulEscuro},${C.azulMedio})`,padding:"0 20px",boxShadow:"0 4px 20px rgba(26,58,107,0.3)",position:"sticky",top:0,zIndex:200}}>
+        <div style={{maxWidth:1400,margin:"0 auto",display:"flex",alignItems:"center",gap:8}}>
+
+          {/* Hamburguer + Logo */}
+          <button onClick={()=>setMenuAberto(m=>!m)} title="Menu completo"
+            style={{background:"none",border:"none",cursor:"pointer",padding:"8px",borderRadius:8,display:"flex",flexDirection:"column",gap:4,flexShrink:0,opacity:0.8}}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.1)"}
+            onMouseLeave={e=>e.currentTarget.style.background="none"}>
+            <div style={{width:20,height:2,background:C.branco,borderRadius:2,transition:"all 0.2s",transform:menuAberto?"rotate(45deg) translate(4px,4px)":"none"}}/>
+            <div style={{width:20,height:2,background:C.branco,borderRadius:2,transition:"all 0.2s",opacity:menuAberto?0:1}}/>
+            <div style={{width:20,height:2,background:C.branco,borderRadius:2,transition:"all 0.2s",transform:menuAberto?"rotate(-45deg) translate(4px,-4px)":"none"}}/>
+          </button>
+
+          <div style={{padding:"12px 16px 12px 4px",borderRight:`1px solid rgba(255,255,255,0.15)`,marginRight:8,flexShrink:0}}>
+            <svg width="80" height="32" viewBox="0 0 220 80"><circle cx="28" cy="14" r="7" fill="none" stroke="#56bfe9" strokeWidth="3.5"/><path d="M21 28 Q21 52 28 52 Q35 52 35 28" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"/><path d="M35 28 Q35 14 55 14 L80 52" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"/><path d="M80 14 L80 52" fill="none" stroke="white" strokeWidth="5" strokeLinecap="round"/><text x="95" y="45" fill="white" fontSize="36" fontWeight="800" fontFamily="'Segoe UI',sans-serif" letterSpacing="2">NTEC</text></svg>
+            <div style={{color:C.ciano,fontSize:8,letterSpacing:3,fontWeight:700,marginTop:-4}}>ENGENHARIA INTEGRADA</div>
           </div>
-          <nav style={{display:"flex",gap:2,flex:1,overflowX:"auto"}}>
-            {abas.map(a=><button key={a.id} onClick={()=>setAba(a.id)} style={{background:aba===a.id?"rgba(255,255,255,0.15)":"transparent",color:aba===a.id?C.branco:"rgba(255,255,255,0.65)",border:"none",padding:"16px 14px",cursor:"pointer",fontSize:13,fontWeight:aba===a.id?700:500,fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,borderBottom:aba===a.id?`2px solid ${C.ciano}`:"2px solid transparent",transition:"all 0.2s",whiteSpace:"nowrap"}}>{a.icone} {a.label}</button>)}
+
+          {/* Abas principais */}
+          <nav style={{display:"flex",gap:0,flex:1,overflowX:"auto",scrollbarWidth:"none"}}>
+            {abasPrincipais.map(a=>{
+              const ativo = aba===a.id || (a.id==="horas"&&aba==="produtividade") || (a.id==="agenda"&&aba==="escalas");
+              return <button key={a.id} onClick={()=>setAba(a.id)}
+                style={{background:ativo?"rgba(255,255,255,0.15)":"transparent",
+                  color:ativo?C.branco:"rgba(255,255,255,0.65)",
+                  border:"none",padding:"16px 14px",cursor:"pointer",fontSize:13,
+                  fontWeight:ativo?700:500,fontFamily:"inherit",
+                  display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap",
+                  borderBottom:ativo?`2px solid ${C.ciano}`:"2px solid transparent",
+                  transition:"all 0.2s"}}>
+                {a.icone} {a.label}
+              </button>;
+            })}
           </nav>
-          <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+
+          {/* Botões direita */}
+          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
             {pwaPrompt&&!pwaInstalado&&(
               <button onClick={instalarPWA} title="Instalar INTEC como aplicativo"
-                style={{background:"rgba(86,191,233,0.15)",color:C.ciano,border:"1px solid rgba(86,191,233,0.3)",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
-                📲 Instalar App
+                style={{background:"rgba(86,191,233,0.15)",color:C.ciano,border:"1px solid rgba(86,191,233,0.3)",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+                📲
               </button>
             )}
-            {sessaoAtiva&&<div style={{background:"rgba(34,197,94,0.2)",border:"1px solid rgba(34,197,94,0.4)",borderRadius:8,padding:"4px 10px",fontSize:11,color:C.verde,fontWeight:700}}>▶ Em sessão</div>}
-            {!sessaoAtiva&&<Btn onClick={()=>setModalH("checkin")} variant="ciano" small>▶ Iniciar Sessão</Btn>}
-            {sessaoAtiva&&<Btn onClick={()=>setModalH("encerramento")} small style={{background:"rgba(239,68,68,0.15)",color:"#fca5a5",border:"1px solid rgba(239,68,68,0.3)"}}>⏹ Encerrar</Btn>}
-            <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"6px 10px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)",transition:"all 0.2s"}} onClick={()=>{if(window.confirm("Sair do sistema?"))fazerLogout();}}>
-              <Avatar u={user} size={28}/>
-              <div style={{color:C.branco}}><div style={{fontSize:12,fontWeight:700}}>{user.nome.split(" ")[0]}</div><div style={{fontSize:10,color:C.ciano}}>{user.perfil==="admin"?"Admin":user.perfil==="gestor"?"Gestor":"Colaborador"}</div></div>
+            {sessaoAtiva&&<div style={{background:"rgba(34,197,94,0.2)",border:"1px solid rgba(34,197,94,0.4)",borderRadius:8,padding:"4px 8px",fontSize:11,color:C.verde,fontWeight:700,whiteSpace:"nowrap"}}>▶ Sessão</div>}
+            {!sessaoAtiva&&<Btn onClick={()=>setModalH("checkin")} variant="ciano" small>▶ Iniciar</Btn>}
+            {sessaoAtiva&&<Btn onClick={()=>setModalH("encerramento")} small style={{background:"rgba(239,68,68,0.15)",color:"#fca5a5",border:"1px solid rgba(239,68,68,0.3)"}}>⏹</Btn>}
+            <div style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"5px 8px",borderRadius:8,border:"1px solid rgba(255,255,255,0.2)"}}
+              onClick={()=>{if(window.confirm("Sair do sistema?"))fazerLogout();}}>
+              <Avatar u={user} size={26}/>
+              <div style={{color:C.branco}}>
+                <div style={{fontSize:12,fontWeight:700}}>{user.nome.split(" ")[0]}</div>
+                <div style={{fontSize:9,color:C.ciano}}>{user.perfil==="gestor"?"Gestor":"Colab."}</div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <main style={{maxWidth:1400,margin:"0 auto",padding:"28px 24px"}}>
+      {/* ── MENU LATERAL ── */}
+      {menuAberto&&(
+        <div style={{position:"fixed",inset:0,zIndex:150}} onClick={()=>setMenuAberto(false)}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{position:"fixed",top:0,left:0,bottom:0,width:260,
+              background:`linear-gradient(180deg,${C.azulEscuro} 0%,#0d2247 100%)`,
+              boxShadow:"4px 0 24px rgba(0,0,0,0.4)",zIndex:151,
+              display:"flex",flexDirection:"column",paddingTop:64}}>
+            {/* Header do menu */}
+            <div style={{padding:"0 20px 16px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
+              <div style={{color:C.ciano,fontSize:10,fontWeight:700,letterSpacing:2}}>NAVEGAÇÃO</div>
+            </div>
+            {/* Grupos */}
+            {[
+              {grupo:"principal", label:"Principal",        icone:"🏠"},
+              {grupo:"horas",     label:"Horas & Produtividade", icone:"⏱"},
+              {grupo:"agenda",    label:"Agenda & Escalas", icone:"📅"},
+              {grupo:"config",    label:"Sistema",          icone:"⚙"},
+            ].map(g=>(
+              <div key={g.grupo} style={{marginBottom:4}}>
+                <div style={{padding:"10px 20px 6px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:1}}>
+                  {g.icone} {g.label.toUpperCase()}
+                </div>
+                {abasMenu.filter(a=>a.grupo===g.grupo).map(a=>{
+                  const ativo = aba===a.id;
+                  return(
+                    <button key={a.id} onClick={()=>{setAba(a.id);setMenuAberto(false);}}
+                      style={{width:"100%",background:ativo?"rgba(86,191,233,0.15)":"transparent",
+                        border:"none",borderLeft:ativo?`3px solid ${C.ciano}`:"3px solid transparent",
+                        padding:"10px 20px",cursor:"pointer",
+                        display:"flex",alignItems:"center",gap:12,
+                        color:ativo?C.branco:"rgba(255,255,255,0.65)",
+                        fontSize:13,fontWeight:ativo?700:400,fontFamily:"inherit",
+                        transition:"all 0.15s",textAlign:"left"}}>
+                      <span style={{fontSize:18,minWidth:24}}>{a.icone}</span>
+                      <span>{a.label}</span>
+                      {ativo&&<span style={{marginLeft:"auto",fontSize:10,color:C.ciano}}>●</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {/* Info do usuário */}
+            <div style={{marginTop:"auto",padding:"16px 20px",borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <Avatar u={user} size={36}/>
+                <div>
+                  <div style={{color:C.branco,fontWeight:700,fontSize:13}}>{user.nome}</div>
+                  <div style={{color:C.ciano,fontSize:11}}>{user.email}</div>
+                </div>
+              </div>
+              <button onClick={()=>{if(window.confirm("Sair?"))fazerLogout();}} style={{marginTop:12,width:"100%",background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"8px",color:"#fca5a5",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
+                🚪 Sair do sistema
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main style={{maxWidth:1400,margin:"0 auto",padding:"28px 24px"}}> 
         {aba==="dashboard" &&<Dashboard projetos={projetos} onAbrirProjeto={abrirP} drive={drive} onImportar={importar} usuarioAtual={user}/>}
         {aba==="projetos"  &&<ListaProjetos projetos={projetos} onAbrirProjeto={abrirP} onNovoProjeto={novoP} usuarios={usuarios}/>}
         {aba==="financeiro"&&<Financeiro projetos={projetos}/>}
-        {aba==="horas"          &&<BancoHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
-        {aba==="produtividade" &&<Produtividade registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario}/>}
-        {aba==="calendario"    &&<ModuloCalendario calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
-        {aba==="escalas"   &&<Escalas usuarioAtual={user} usuarios={usuarios}/>}
+        {aba==="horas"     &&<AbaHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
+        {aba==="agenda"    &&<AbaAgenda calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
         {aba==="chat"      &&<div style={{height:"calc(100vh - 140px)"}}><Chat usuario={user} usuarios={usuarios}/></div>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
       </main>
