@@ -554,8 +554,9 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     </>)}
 
     <Inp label="Hora de início" type="time" value={hi} onChange={setHi}/>
-    <Inp label="Observação *" value={obs} onChange={setObs} placeholder={tipoSessao==="projeto"?"Ex: Modelagem no Eberick...":"Ex: Orçamento para cliente X..."} required/>
-    {!obs.trim()&&<span style={{fontSize:11,color:C.cinzaClaro}}>Descreva brevemente o que será feito</span>}
+    <Inp label="O que você vai fazer? *" value={obs} onChange={setObs}
+      placeholder={tipoSessao==="projeto"?"Ex: Modelagem estrutural no Eberick...":"Ex: Orçamento para cliente X..."} required/>
+    {!obs.trim()&&<span style={{fontSize:11,color:C.vermelho,fontSize:11}}>⚠ Descrição obrigatória</span>}
     <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
       <Btn variant="ghost" onClick={onFechar}>Agora não</Btn>
       <Btn onClick={()=>onIniciar(tipoSessao==="projeto"?projSel:null, hi, obs, tipoSessao==="admin"?catSel:null)}
@@ -604,7 +605,15 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
           style={{border:`1.5px solid ${horaValida?C.cinzaCard:C.vermelho}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",background:C.branco,width:"100%",boxSizing:"border-box"}}/>
         {!horaValida&&<span style={{fontSize:11,color:C.vermelho}}>⚠ Hora não pode ser maior que {horaMaxima}</span>}
       </div>
-      <Inp label="Observação do dia (opcional)" value={obs} onChange={setObs} placeholder="Como foi o dia?"/>
+      {/* Mostra o que foi dito ao iniciar (somente leitura) */}
+    {sessaoAtiva?.obsInicio&&(
+      <div style={{padding:"8px 12px",background:C.cinzaFundo,borderRadius:8,border:`1px solid ${C.cinzaCard}`}}>
+        <div style={{fontSize:10,fontWeight:700,color:C.cinzaClaro,marginBottom:2}}>O QUE ESTAVA FAZENDO</div>
+        <div style={{fontSize:13,color:C.cinzaEscuro}}>{sessaoAtiva.obsInicio}</div>
+      </div>
+    )}
+    <Inp label="Feedback / Como foi? (opcional)" value={obs} onChange={setObs}
+      placeholder="Ex: Modelagem concluída, falta lançar fundações..."/>
       <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
         <Btn variant="ghost" onClick={onFechar}>Cancelar</Btn>
         <Btn variant="verde" onClick={()=>onEncerrar(hf,obs)} disabled={!horaValida}>✔ Encerrar e Salvar</Btn>
@@ -1626,7 +1635,8 @@ function ModuloCalendario({ calendario, usuarioAtual, registros, usuarios }) {
 function BancoHoras({registros,setRegistros,usuarios,projetos,usuarioAtual,onAbrirEncerramento}){
   const [filtroUser,setFU]=useState(usuarioAtual.perfil==="colaborador"?usuarioAtual.id:"todos");
   const [filtroMes,setFM]=useState("todos");
-  const [editandoObs,setEditandoObs]=useState(null); // id da sessão sendo editada
+  const [abaH,     setAbaH]=useState("historico"); // historico | extras
+  const [editandoObs,setEditandoObs]=useState(null);
   const [novaObs,setNovaObs]=useState("");
   const isGestor=["admin","gestor"].includes(usuarioAtual.perfil);
 
@@ -1664,6 +1674,34 @@ function BancoHoras({registros,setRegistros,usuarios,projetos,usuarioAtual,onAbr
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {/* Resumo de horas extras na aba extras */}
+      {abaH==="extras"&&(()=>{
+        const regExtras = filtrados.filter(r=>(r.minutosExtras||0)>0 && (isGestor||r.usuarioId===usuarioAtual.id));
+        const totalExtraMin = regExtras.reduce((a,r)=>a+(r.minutosExtras||0),0);
+        const porUser = {};
+        regExtras.forEach(r=>{
+          if(!porUser[r.usuarioId]) porUser[r.usuarioId]={min:0,n:0};
+          porUser[r.usuarioId].min+=r.minutosExtras||0;
+          porUser[r.usuarioId].n++;
+        });
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+            <Card style={{textAlign:"center",borderTop:`3px solid ${C.laranja}`,padding:14}}>
+              <div style={{fontSize:22}}>⏰</div>
+              <div style={{fontSize:22,fontWeight:800,color:C.laranja}}>{fmtDuracao(totalExtraMin)}</div>
+              <div style={{fontSize:11,color:C.cinzaClaro,marginTop:4}}>Total de horas extras</div>
+            </Card>
+            {isGestor&&Object.entries(porUser).map(([uid,d])=>{
+              const u=usuarios.find(x=>x.id===uid);
+              return <Card key={uid} style={{borderTop:`3px solid ${C.amarelo}`,padding:14}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><Avatar u={u} size={28}/><span style={{fontSize:13,fontWeight:700}}>{u?.nome||uid}</span></div>
+                <div style={{fontSize:18,fontWeight:800,color:C.amarelo}}>{fmtDuracao(d.min)}</div>
+                <div style={{fontSize:11,color:C.cinzaClaro}}>{d.n} sessão(ões)</div>
+              </Card>;
+            })}
+          </div>
+        );
+      })()}
       {sessaoAberta&&(
         <Card style={{borderLeft:`4px solid ${C.verde}`,background:"#f0fdf4"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
@@ -4055,12 +4093,16 @@ export default function App(){
       // ── 1. VERIFICAÇÃO DE SESSÃO ATIVA ──────────────────────────────────
       const sessaoAberta = regs.find(r=>r.usuarioId===u.id&&!r.horaFim);
       if (sessaoAberta) {
-        setModalH("aviso");
-        notificarSistema(
-          "⏰ INTEC — Verificação de Atividade",
-          `Olá, ${u.nome}! Você ainda está trabalhando no projeto?`,
-          "intec-atividade", 15000
-        );
+        // Só abre se não tiver modal já aberto — evita reabrir após responder
+        setModalH(prev => {
+          if (prev) return prev; // já tem modal aberto, mantém
+          notificarSistema(
+            "⏰ INTEC — Verificação de Atividade",
+            `Olá, ${u.nome}! Você ainda está trabalhando no projeto?`,
+            "intec-atividade", 15000
+          );
+          return "aviso";
+        });
       }
 
       // ── 2. LEMBRETE DE SESSÃO NÃO INICIADA (em horário comercial) ───────
@@ -4219,46 +4261,59 @@ export default function App(){
   const sessaoAtiva=registros.find(r=>r.usuarioId===user?.id&&!r.horaFim);
 
   // ── Sessões ──
-  const iniciar = async (projetoId, hi, obs, categoriaAdmin=null) => {
+  const iniciar = async (projetoId, hi, obsInicio, categoriaAdmin=null) => {
     const dataHoje = new Date().toISOString().slice(0,10);
-    // Verifica se início já é fora do expediente
     const uExp = usuarios.find(u2=>u2.id===user.id)?.expediente;
-    const { eHoraExtra } = verificarHoraExtra(hi, hi, uExp, dataHoje);
+    // Verificar se horário de início é fora do expediente
+    const { eHoraExtra, minutosExtras: mExt } = verificarHoraExtra(hi, hi, uExp, dataHoje);
     const nova = {
       id: Date.now().toString(), usuarioId:user.id,
       projetoId: projetoId||null,
       categoriaAdmin: categoriaAdmin||null,
       data: dataHoje,
       horaInicio:hi, horaFim:null, duracaoMin:null,
-      minutosExtras:0, foraDoExpediente: eHoraExtra, inicioTs:Date.now(), obs,
+      minutosExtras:0, foraDoExpediente: eHoraExtra,
+      inicioTs:Date.now(),
+      obsInicio: obsInicio||"",
+      obsFim: "",
+      obs: obsInicio||"", // compatibilidade
     };
     setRegistros(x => [...x, nova]);
     setModalH(null);
     try { await db.sessoes.salvar(nova); } catch(e){ console.error("Erro salvar sessao:", e); }
   };
 
-  const encerrar = async (hf, obs) => {
+  const encerrar = async (hf, obsFim) => {
     let sessaoId = null;
+    let sessaoSnap = null;
     setRegistros(x => x.map(r => {
       if(r.usuarioId===user.id && !r.horaFim){
         const dur = Math.max(0, horaMin(hf) - horaMin(r.horaInicio));
         const u   = usuarios.find(u2=>u2.id===r.usuarioId);
         const {minutosExtras} = verificarHoraExtra(r.horaInicio, hf, u?.expediente, r.data);
-        sessaoId = r.id;
-        return {...r, horaFim:hf, duracaoMin:dur, minutosExtras, obs:obs||r.obs};
+        sessaoId  = r.id;
+        sessaoSnap= r;
+        return {
+          ...r,
+          horaFim: hf,
+          duracaoMin: dur,
+          minutosExtras,
+          obsFim: obsFim||"",
+          obs: r.obsInicio||r.obs||"", // preserva obs de início
+        };
       }
       return r;
     }));
     setModalH(null);
-    if(sessaoId) {
-      const sessao = registros.find(r => r.id === sessaoId);
-      if(sessao) {
-        const dur = Math.max(0, horaMin(hf) - horaMin(sessao.horaInicio));
-        const u   = usuarios.find(u2=>u2.id===sessao.usuarioId);
-        const {minutosExtras} = verificarHoraExtra(sessao.horaInicio, hf, u?.expediente, sessao.data);
-        try { await db.sessoes.encerrar(sessaoId, hf, dur, obs||sessao.obs, minutosExtras); }
-        catch(e){ console.error("Erro encerrar sessao:", e); }
-      }
+    if(sessaoId && sessaoSnap) {
+      const dur = Math.max(0, horaMin(hf) - horaMin(sessaoSnap.horaInicio));
+      const u   = usuarios.find(u2=>u2.id===sessaoSnap.usuarioId);
+      const {minutosExtras} = verificarHoraExtra(sessaoSnap.horaInicio, hf, u?.expediente, sessaoSnap.data);
+      try {
+        await db.sessoes.encerrarCompleto(sessaoId, hf, dur,
+          sessaoSnap.obsInicio||sessaoSnap.obs||"",
+          obsFim||"", minutosExtras);
+      } catch(e){ console.error("Erro encerrar sessao:", e); }
     }
   };
 

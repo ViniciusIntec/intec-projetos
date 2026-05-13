@@ -105,10 +105,20 @@ export const db = {
     async encerrar(id, horaFim, duracaoMin, obs, minutosExtras=0) {
       const { data, error } = await supabase
         .from('sessoes_horas')
-        .update({ hora_fim: horaFim, duracao_min: duracaoMin, obs, minutos_extras: minutosExtras })
-        .eq('id', id)
-        .select()
-        .single();
+        .update({ hora_fim: horaFim, duracao_min: duracaoMin, obs, obs_inicio: obs, minutos_extras: minutosExtras })
+        .eq('id', id).select().single();
+      if (error) throw error;
+      return toSessaoFront(data);
+    },
+    async encerrarCompleto(id, horaFim, duracaoMin, obsInicio, obsFim, minutosExtras=0) {
+      const { data, error } = await supabase
+        .from('sessoes_horas')
+        .update({
+          hora_fim: horaFim, duracao_min: duracaoMin,
+          obs: obsInicio, obs_inicio: obsInicio, obs_fim: obsFim,
+          minutos_extras: minutosExtras
+        })
+        .eq('id', id).select().single();
       if (error) throw error;
       return toSessaoFront(data);
     },
@@ -292,7 +302,10 @@ function toSessaoFront(r) {
     duracaoMin:     r.duracao_min,
     minutosExtras:  r.minutos_extras || 0,
     inicioTs:       r.inicio_ts,
-    obs:            r.obs || '',
+    obs:            r.obs_inicio || r.obs || '',
+    obsInicio:      r.obs_inicio || r.obs || '',
+    obsFim:         r.obs_fim    || '',
+    visivelCliente: r.visivel_cliente !== false,
   };
 }
 
@@ -308,7 +321,10 @@ function toSessaoBack(s) {
     duracao_min:      s.duracaoMin || null,
     minutos_extras:   s.minutosExtras || 0,
     inicio_ts:        s.inicioTs,
-    obs:              s.obs || '',
+    obs:              s.obsInicio || s.obs || '',
+    obs_inicio:       s.obsInicio || s.obs || '',
+    obs_fim:          s.obsFim || '',
+    visivel_cliente:  s.visivelCliente !== false,
   };
 }
 
