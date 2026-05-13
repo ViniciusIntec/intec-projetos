@@ -415,3 +415,113 @@ export const portal = {
     if (error) throw error;
   },
 };
+
+// ─── CHAT ──────────────────────────────────────────────────────────────────────
+export const chat = {
+
+  async listarCanais() {
+    const { data, error } = await supabase
+      .from('chat_canais')
+      .select('*')
+      .eq('ativo', true)
+      .order('created_at');
+    if (error) throw error;
+    return data || [];
+  },
+
+  async criarCanal(nome, descricao, icone, tipo='canal', criadoPor=null) {
+    const { data, error } = await supabase
+      .from('chat_canais')
+      .insert({ nome, descricao, icone, tipo, criado_por: criadoPor })
+      .select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async excluirCanal(id) {
+    const { error } = await supabase.from('chat_canais').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // Canal direto entre dois usuários
+  async obterOuCriarDM(userId1, userId2, nome1, nome2) {
+    // Verificar se já existe DM entre os dois
+    const { data: membros } = await supabase
+      .from('chat_membros')
+      .select('canal_id')
+      .eq('usuario_id', userId1);
+    
+    if (membros && membros.length > 0) {
+      const canalIds = membros.map(m => m.canal_id);
+      const { data: membros2 } = await supabase
+        .from('chat_membros')
+        .select('canal_id, chat_canais(tipo)')
+        .eq('usuario_id', userId2)
+        .in('canal_id', canalIds);
+      
+      const dmExistente = membros2?.find(m => m.chat_canais?.tipo === 'direto');
+      if (dmExistente) return { id: dmExistente.canal_id, tipo: 'direto' };
+    }
+
+    // Criar novo DM
+    const { data: canal } = await supabase
+      .from('chat_canais')
+      .insert({ nome: `${nome1} ↔ ${nome2}`, tipo: 'direto', icone: '👤' })
+      .select().single();
+
+    await supabase.from('chat_membros').insert([
+      { canal_id: canal.id, usuario_id: userId1 },
+      { canal_id: canal.id, usuario_id: userId2 },
+    ]);
+    return canal;
+  },
+
+  async listarMensagens(canalId, limite=50) {
+    const { data, error } = await supabase
+      .from('chat_mensagens')
+      .select('*')
+      .eq('canal_id', canalId)
+      .order('created_at', { ascending: true })
+      .limit(limite);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[]) {
+    const { data, error } = await supabase
+      .from('chat_mensagens')
+      .insert({ canal_id: canalId, autor_id: autorId, autor_nome: autorNome,
+                autor_cor: autorCor, conteudo, mencoes })
+      .select().single();
+    if (error) throw error;
+    return data;
+  },
+
+  async excluirMensagem(id) {
+    const { error } = await supabase.from('chat_mensagens').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  async marcarLido(canalId, userId) {
+    const { error } = await supabase
+      .from('chat_membros')
+      .upsert({ canal_id: canalId, usuario_id: userId, visto_ate: new Date().toISOString() },
+               { onConflict: 'canal_id,usuario_id' });
+    if (error) throw error;
+  },
+
+  // Realtime: escuta mensagens novas em um canal
+  assinarCanal(canalId, onMensagem) {
+    return supabase
+      .channel(`chat-${canalId}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_mensagens', filter: `canal_id=eq.${canalId}` },
+        payload => onMensagem(payload.new)
+      )
+      .subscribe();
+  },
+
+  desassinarCanal(canal) {
+    supabase.removeChannel(canal);
+  },
+};

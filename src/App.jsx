@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { db, iniciarRealtime, enviarEmail, portal } from "./supabase.js";
+import { db, iniciarRealtime, enviarEmail, portal, chat } from "./supabase.js";
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────────
 const GOOGLE_CLIENT_ID = "26616128245-j4kghm435os4m3vu42tq32ikkjmbvrp6.apps.googleusercontent.com";
@@ -3540,6 +3540,392 @@ function Financeiro({projetos}){
 }
 
 // ─── APP ───────────────────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CHAT INTEC
+// ══════════════════════════════════════════════════════════════════════════════
+function Chat({ usuario, usuarios, flutuante=false, onFechar }) {
+  const [canais,       setCanais]      = useState([]);
+  const [canalAtivo,   setCanalAtivo]  = useState(null);
+  const [mensagens,    setMensagens]   = useState([]);
+  const [texto,        setTexto]       = useState("");
+  const [carregando,   setCarregando]  = useState(false);
+  const [mostrarEmoji, setMostrarEmoji]= useState(false);
+  const [mostrarDM,    setMostrarDM]   = useState(false);
+  const [novoCanal,    setNovoCanal]   = useState({nome:"",descricao:"",icone:"💬"});
+  const [criandoCanal, setCriando]     = useState(false);
+  const [naoLidos,     setNaoLidos]    = useState({});
+  const [assinatura,   setAssinatura]  = useState(null);
+  const isGestor = ["admin","gestor"].includes(usuario?.perfil);
+  const mensagensRef = useRef(null);
+  const inputRef     = useRef(null);
+
+  const EMOJIS = ["😀","😂","👍","👎","❤️","🔥","✅","⚠️","📋","📁","💰","🏗","🎉","👀","🤔","💡"];
+
+  // Carregar canais
+  useEffect(()=>{
+    chat.listarCanais()
+      .then(lista => {
+        // Separar canais públicos dos DMs do usuário
+        const publicos = lista.filter(c => c.tipo==="canal");
+        const dms      = lista.filter(c => c.tipo==="direto");
+        setCanais([...publicos, ...dms]);
+        if (publicos.length > 0) setCanalAtivo(publicos[0]);
+      })
+      .catch(console.error);
+  }, []);
+
+  // Carregar mensagens ao trocar de canal
+  useEffect(()=>{
+    if (!canalAtivo) return;
+    setCarregando(true);
+    chat.listarMensagens(canalAtivo.id)
+      .then(msgs => { setMensagens(msgs); setCarregando(false); })
+      .catch(()=>setCarregando(false));
+
+    // Marcar como lido
+    if (usuario) chat.marcarLido(canalAtivo.id, usuario.id).catch(()=>{});
+
+    // Cancelar assinatura anterior
+    if (assinatura) chat.desassinarCanal(assinatura);
+
+    // Assinar canal atual
+    const nova = chat.assinarCanal(canalAtivo.id, (msg) => {
+      setMensagens(prev => [...prev, msg]);
+      // Notificação se não for o próprio usuário
+      if (msg.autor_id !== usuario?.id) {
+        notificarSistema(
+          `💬 ${msg.autor_nome} — ${canalAtivo.nome}`,
+          msg.conteudo.slice(0, 80),
+          "intec-chat", 6000
+        );
+        // Mencão direta
+        if ((msg.mencoes||[]).includes(usuario?.id)) {
+          notificarSistema(
+            `🔔 ${msg.autor_nome} mencionou você!`,
+            msg.conteudo.slice(0, 80),
+            "intec-mencao", 10000
+          );
+        }
+      }
+    });
+    setAssinatura(nova);
+    return () => { if (nova) chat.desassinarCanal(nova); };
+  }, [canalAtivo?.id]);
+
+  // Scroll automático
+  useEffect(()=>{
+    if (mensagensRef.current) {
+      mensagensRef.current.scrollTop = mensagensRef.current.scrollHeight;
+    }
+  }, [mensagens]);
+
+  const enviar = async () => {
+    if (!texto.trim() || !canalAtivo || !usuario) return;
+    const mencoes = usuarios
+      .filter(u => texto.includes(`@${u.nome}`))
+      .map(u => u.id);
+    const msg = texto.trim();
+    setTexto("");
+    try {
+      await chat.enviarMensagem(canalAtivo.id, usuario.id, usuario.nome,
+        usuario.cor||"#2563a8", msg, mencoes);
+    } catch(e) { console.error("Erro enviar:", e); setTexto(msg); }
+  };
+
+  const iniciarDM = async (outro) => {
+    try {
+      const canal = await chat.obterOuCriarDM(usuario.id, outro.id, usuario.nome, outro.nome);
+      const jaExiste = canais.find(c=>c.id===canal.id);
+      if (!jaExiste) setCanais(prev=>[...prev, canal]);
+      setCanalAtivo(canal);
+      setMostrarDM(false);
+    } catch(e) { console.error(e); }
+  };
+
+  const criarCanalNovo = async () => {
+    if (!novoCanal.nome.trim()) return;
+    try {
+      const c = await chat.criarCanal(novoCanal.nome, novoCanal.descricao, novoCanal.icone, "canal", usuario.id);
+      setCanais(prev=>[...prev, c]);
+      setCriando(false);
+      setNovoCanal({nome:"",descricao:"",icone:"💬"});
+      setCanalAtivo(c);
+    } catch(e) { console.error(e); }
+  };
+
+  const fmtHora = iso => new Date(iso).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  const fmtDia  = iso => {
+    const d = new Date(iso); const hoje = new Date();
+    if (d.toDateString()===hoje.toDateString()) return "Hoje";
+    const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1);
+    if (d.toDateString()===ontem.toDateString()) return "Ontem";
+    return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
+  };
+
+  // Renderizar texto com @menções destacadas
+  const renderTexto = (txt) => {
+    const partes = txt.split(/(@\w+(?:\s\w+)?)/g);
+    return partes.map((p,i) => {
+      if (p.startsWith("@")) {
+        const nome = p.slice(1);
+        const u = usuarios.find(x=>x.nome===nome);
+        if (u) return <span key={i} style={{background:"#dbeafe",color:"#1d4ed8",borderRadius:4,padding:"0 4px",fontWeight:700,fontSize:12}}>{p}</span>;
+      }
+      return <span key={i}>{p}</span>;
+    });
+  };
+
+  const alturaLateral = flutuante ? 460 : "calc(100vh - 180px)";
+
+  return (
+    <div style={{display:"flex",height:flutuante?460:600,background:C.branco,borderRadius:flutuante?14:12,overflow:"hidden",border:`1px solid ${C.cinzaCard}`,boxShadow:flutuante?"0 8px 32px rgba(0,0,0,0.2)":"none"}}>
+
+      {/* ── SIDEBAR ── */}
+      <div style={{width:220,background:C.azulEscuro,display:"flex",flexDirection:"column",flexShrink:0}}>
+        {/* Header sidebar */}
+        <div style={{padding:"14px 12px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{color:C.branco,fontWeight:800,fontSize:14}}>💬 Chat INTEC</span>
+            {flutuante&&<button onClick={onFechar} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:16}}>✕</button>}
+          </div>
+          <div style={{color:C.ciano,fontSize:10,marginTop:2}}>● Online — {usuario?.nome}</div>
+        </div>
+
+        {/* Canais públicos */}
+        <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+          <div style={{padding:"6px 12px 4px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",letterSpacing:1}}>CANAIS</div>
+          {canais.filter(c=>c.tipo==="canal").map(c=>(
+            <div key={c.id} onClick={()=>setCanalAtivo(c)}
+              style={{padding:"7px 12px",cursor:"pointer",borderRadius:6,margin:"1px 6px",
+                background:canalAtivo?.id===c.id?"rgba(255,255,255,0.15)":"transparent",
+                display:"flex",alignItems:"center",gap:8,transition:"background 0.15s"}}
+              onMouseEnter={e=>{ if(canalAtivo?.id!==c.id) e.currentTarget.style.background="rgba(255,255,255,0.07)"; }}
+              onMouseLeave={e=>{ if(canalAtivo?.id!==c.id) e.currentTarget.style.background="transparent"; }}>
+              <span style={{fontSize:14}}>{c.icone}</span>
+              <span style={{color:canalAtivo?.id===c.id?C.branco:"rgba(255,255,255,0.7)",fontSize:13,fontWeight:canalAtivo?.id===c.id?700:400}}># {c.nome}</span>
+            </div>
+          ))}
+
+          {/* Mensagens diretas */}
+          <div style={{padding:"10px 12px 4px",fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.4)",letterSpacing:1,marginTop:8}}>MENSAGENS DIRETAS</div>
+          {canais.filter(c=>c.tipo==="direto").map(c=>{
+            const nomeOutro = c.nome.split("↔").find(n=>n.trim()!==usuario?.nome)?.trim() || c.nome;
+            const outroU = usuarios.find(u=>u.nome===nomeOutro);
+            return(
+              <div key={c.id} onClick={()=>setCanalAtivo(c)}
+                style={{padding:"7px 12px",cursor:"pointer",borderRadius:6,margin:"1px 6px",
+                  background:canalAtivo?.id===c.id?"rgba(255,255,255,0.15)":"transparent",
+                  display:"flex",alignItems:"center",gap:8}}
+                onMouseEnter={e=>{ if(canalAtivo?.id!==c.id) e.currentTarget.style.background="rgba(255,255,255,0.07)"; }}
+                onMouseLeave={e=>{ if(canalAtivo?.id!==c.id) e.currentTarget.style.background="transparent"; }}>
+                <div style={{width:24,height:24,borderRadius:"50%",background:outroU?.cor||"#8492a6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0}}>
+                  {nomeOutro.slice(0,2).toUpperCase()}
+                </div>
+                <span style={{color:canalAtivo?.id===c.id?C.branco:"rgba(255,255,255,0.7)",fontSize:12,fontWeight:canalAtivo?.id===c.id?700:400}}>{nomeOutro}</span>
+              </div>
+            );
+          })}
+
+          {/* Botão nova DM */}
+          <div style={{padding:"8px 12px",marginTop:4}}>
+            <button onClick={()=>setMostrarDM(true)}
+              style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"1px dashed rgba(255,255,255,0.2)",borderRadius:6,padding:"6px",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
+              + Nova conversa
+            </button>
+          </div>
+
+          {/* Botão novo canal (gestor) */}
+          {isGestor&&(
+            <div style={{padding:"4px 12px"}}>
+              <button onClick={()=>setCriando(true)}
+                style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"1px dashed rgba(255,255,255,0.2)",borderRadius:6,padding:"6px",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
+                + Novo canal
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── ÁREA PRINCIPAL ── */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        {/* Header do canal */}
+        {canalAtivo&&(
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${C.cinzaCard}`,display:"flex",alignItems:"center",gap:10,background:"#fafafa",flexShrink:0}}>
+            <span style={{fontSize:18}}>{canalAtivo.icone}</span>
+            <div>
+              <div style={{fontWeight:700,fontSize:14,color:C.cinzaEscuro}}>{canalAtivo.tipo==="canal"?"# ":""}{canalAtivo.nome}</div>
+              {canalAtivo.descricao&&<div style={{fontSize:11,color:C.cinzaClaro}}>{canalAtivo.descricao}</div>}
+            </div>
+            {mensagens.length>0&&<span style={{marginLeft:"auto",fontSize:11,color:C.cinzaClaro}}>{mensagens.length} mensagens</span>}
+          </div>
+        )}
+
+        {/* Mensagens */}
+        <div ref={mensagensRef} style={{flex:1,overflowY:"auto",padding:"12px 16px",display:"flex",flexDirection:"column",gap:2}}>
+          {carregando&&<div style={{textAlign:"center",color:C.cinzaClaro,padding:20}}>⏳ Carregando...</div>}
+          {!carregando&&mensagens.length===0&&(
+            <div style={{textAlign:"center",color:C.cinzaClaro,padding:40}}>
+              <div style={{fontSize:32,marginBottom:8}}>👋</div>
+              <div style={{fontWeight:600}}>Início do canal {canalAtivo?.nome}</div>
+              <div style={{fontSize:12,marginTop:4}}>Seja o primeiro a enviar uma mensagem!</div>
+            </div>
+          )}
+          {mensagens.map((msg,i)=>{
+            const anterior = mensagens[i-1];
+            const mesmoDia  = anterior && fmtDia(anterior.created_at)===fmtDia(msg.created_at);
+            const mesmoAutor= anterior && anterior.autor_id===msg.autor_id && mesmoDia &&
+              (new Date(msg.created_at)-new Date(anterior.created_at))<5*60*1000;
+            const ehMeu = msg.autor_id === usuario?.id;
+            const mencionaMe = (msg.mencoes||[]).includes(usuario?.id);
+            return(
+              <div key={msg.id}>
+                {!mesmoDia&&(
+                  <div style={{textAlign:"center",margin:"12px 0 8px"}}>
+                    <span style={{background:C.cinzaCard,color:C.cinzaClaro,fontSize:10,padding:"2px 10px",borderRadius:10,fontWeight:600}}>{fmtDia(msg.created_at)}</span>
+                  </div>
+                )}
+                <div style={{display:"flex",gap:8,padding:"3px 4px",borderRadius:6,
+                  background:mencionaMe?"#fef9c3":"transparent",
+                  marginBottom:mesmoAutor?0:2}}>
+                  {!mesmoAutor ? (
+                    <div style={{width:32,height:32,borderRadius:"50%",background:msg.autor_cor||C.azulMedio,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0,marginTop:2}}>
+                      {msg.autor_nome.slice(0,2).toUpperCase()}
+                    </div>
+                  ) : <div style={{width:32,flexShrink:0}}/>}
+                  <div style={{flex:1}}>
+                    {!mesmoAutor&&(
+                      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:2}}>
+                        <span style={{fontWeight:700,fontSize:13,color:msg.autor_cor||C.azulMedio}}>{msg.autor_nome}</span>
+                        <span style={{fontSize:10,color:C.cinzaClaro}}>{fmtHora(msg.created_at)}</span>
+                        {ehMeu&&<button onClick={()=>{ if(window.confirm("Excluir mensagem?")) { chat.excluirMensagem(msg.id); setMensagens(prev=>prev.filter(m=>m.id!==msg.id)); } }}
+                          style={{marginLeft:"auto",background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:11,opacity:0,transition:"opacity 0.15s"}}
+                          onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                          onMouseLeave={e=>e.currentTarget.style.opacity=0}>🗑</button>}
+                      </div>
+                    )}
+                    <div style={{fontSize:13,color:C.cinzaEscuro,lineHeight:1.5,wordBreak:"break-word"}}>
+                      {renderTexto(msg.conteudo)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Input de mensagem */}
+        {canalAtivo&&(
+          <div style={{padding:"10px 12px",borderTop:`1px solid ${C.cinzaCard}`,flexShrink:0,position:"relative"}}>
+            {/* Popup de emojis */}
+            {mostrarEmoji&&(
+              <div style={{position:"absolute",bottom:"100%",left:12,background:C.branco,border:`1px solid ${C.cinzaCard}`,borderRadius:10,padding:8,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",display:"flex",flexWrap:"wrap",gap:4,width:240}}>
+                {EMOJIS.map(e=>(
+                  <button key={e} onClick={()=>{ setTexto(t=>t+e); setMostrarEmoji(false); inputRef.current?.focus(); }}
+                    style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:4,borderRadius:4,transition:"background 0.1s"}}
+                    onMouseEnter={e2=>e2.currentTarget.style.background=C.cinzaFundo}
+                    onMouseLeave={e2=>e2.currentTarget.style.background="none"}>{e}</button>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:6,alignItems:"flex-end",background:C.cinzaFundo,borderRadius:10,padding:"6px 8px",border:`1px solid ${C.cinzaCard}`}}>
+              <button onClick={()=>setMostrarEmoji(e=>!e)}
+                style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:C.cinzaClaro,padding:"0 2px",flexShrink:0}}>😊</button>
+              <textarea ref={inputRef} value={texto} onChange={e=>setTexto(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); enviar(); } }}
+                placeholder={`Mensagem em #${canalAtivo.nome}... (Enter para enviar, Shift+Enter para nova linha)`}
+                rows={1}
+                style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,maxHeight:80,lineHeight:1.5,padding:"2px 0"}}
+                onInput={e=>{ e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,80)+"px"; }}/>
+              <button onClick={enviar} disabled={!texto.trim()}
+                style={{background:texto.trim()?C.azulMedio:"#e2e8f0",color:texto.trim()?C.branco:"#94a3b8",border:"none",borderRadius:7,padding:"6px 14px",cursor:texto.trim()?"pointer":"default",fontSize:13,fontWeight:700,fontFamily:"inherit",transition:"all 0.15s",flexShrink:0}}>
+                Enviar
+              </button>
+            </div>
+            <div style={{fontSize:10,color:C.cinzaClaro,marginTop:4,paddingLeft:4}}>Use @Nome para mencionar alguém</div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal nova conversa DM */}
+      {mostrarDM&&(
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setMostrarDM(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.branco,borderRadius:12,padding:20,width:280,maxHeight:400,overflowY:"auto"}}>
+            <h3 style={{color:C.azulEscuro,margin:"0 0 12px",fontSize:14}}>Nova conversa direta</h3>
+            {usuarios.filter(u=>u.ativo&&u.id!==usuario?.id).map(u=>(
+              <div key={u.id} onClick={()=>iniciarDM(u)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4}}
+                onMouseEnter={e=>e.currentTarget.style.background=C.cinzaFundo}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{width:32,height:32,borderRadius:"50%",background:u.cor||C.azulMedio,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff"}}>
+                  {u.nome.slice(0,2).toUpperCase()}
+                </div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:C.cinzaEscuro}}>{u.nome}</div>
+                  <div style={{fontSize:11,color:C.cinzaClaro}}>{u.perfil}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal novo canal */}
+      {criandoCanal&&(
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setCriando(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.branco,borderRadius:12,padding:24,width:320}}>
+            <h3 style={{color:C.azulEscuro,margin:"0 0 16px",fontSize:14}}>Criar novo canal</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{display:"flex",gap:8}}>
+                <input value={novoCanal.icone} onChange={e=>setNovoCanal(n=>({...n,icone:e.target.value}))}
+                  style={{width:44,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px",fontSize:18,textAlign:"center",fontFamily:"inherit"}}/>
+                <input value={novoCanal.nome} onChange={e=>setNovoCanal(n=>({...n,nome:e.target.value}))}
+                  placeholder="Nome do canal" style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit"}}/>
+              </div>
+              <input value={novoCanal.descricao} onChange={e=>setNovoCanal(n=>({...n,descricao:e.target.value}))}
+                placeholder="Descrição (opcional)" style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit"}}/>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <Btn variant="ghost" small onClick={()=>setCriando(false)}>Cancelar</Btn>
+                <Btn small onClick={criarCanalNovo} disabled={!novoCanal.nome.trim()}>Criar Canal</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Chat flutuante ────────────────────────────────────────────────────────────
+function ChatFlutuante({ usuario, usuarios }) {
+  const [aberto, setAberto] = useState(false);
+  const [naoLidos, setNaoLidos] = useState(0);
+
+  return (
+    <div style={{position:"fixed",bottom:24,right:24,zIndex:1500}}>
+      {aberto&&(
+        <div style={{position:"absolute",bottom:68,right:0,width:680,maxWidth:"95vw"}}>
+          <Chat usuario={usuario} usuarios={usuarios} flutuante onFechar={()=>setAberto(false)}/>
+        </div>
+      )}
+      <button onClick={()=>setAberto(a=>!a)}
+        style={{width:52,height:52,borderRadius:"50%",background:aberto?C.azulEscuro:`linear-gradient(135deg,${C.azulMedio},${C.ciano})`,
+          border:"none",cursor:"pointer",boxShadow:"0 4px 16px rgba(26,58,107,0.4)",
+          display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,
+          transition:"all 0.2s",color:C.branco,position:"relative"}}>
+        {aberto?"✕":"💬"}
+        {naoLidos>0&&!aberto&&(
+          <div style={{position:"absolute",top:-4,right:-4,background:C.vermelho,color:C.branco,
+            borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",
+            justifyContent:"center",fontSize:10,fontWeight:800}}>
+            {naoLidos}
+          </div>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export default function App(){
   const calendario = useCalendario();
   const [projetos,  setProjetos]  = useState([]);
@@ -4018,6 +4404,7 @@ export default function App(){
     {id:"produtividade",label:"Produtividade",    icone:"📈"},
     {id:"calendario",   label:"Calendario",       icone:"📅"},
     {id:"escalas",      label:"Escalas",          icone:"📋"},
+    {id:"chat",         label:"Chat",             icone:"💬"},
     {id:"config",       label:"Configuracoes",    icone:"⚙"},
   ];
 
@@ -4058,12 +4445,14 @@ export default function App(){
         {aba==="produtividade" &&<Produtividade registros={registros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario}/>}
         {aba==="calendario"    &&<ModuloCalendario calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
         {aba==="escalas"   &&<Escalas usuarioAtual={user} usuarios={usuarios}/>}
+        {aba==="chat"      &&<div style={{height:"calc(100vh - 140px)"}}><Chat usuario={user} usuarios={usuarios}/></div>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
       </main>
 
       {modal&&<ModalProjeto projeto={modal.projeto} modo={modal.modo} onClose={()=>setModal(null)} onSave={salvarP} onExcluir={excluirP} usuarios={usuarios}/>}
 
       {modalH&&<ModalHoras tipo={modalH} projetos={projetos} usuarioAtual={user} sessaoAtiva={sessaoAtiva} onIniciar={iniciar} onEncerrar={encerrar} onMudar={mudar} onFechar={acao=>{ if(acao==="encerrar") encerrar(new Date().toTimeString().slice(0,5),"Encerrado pelo colaborador"); else setModalH(null); }}/>}
+      <ChatFlutuante usuario={user} usuarios={usuarios}/>
     </div>
   );
 }
