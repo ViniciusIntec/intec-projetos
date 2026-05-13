@@ -2859,7 +2859,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                           </div>
                         )}
                         {!d.concluido&&(
-                          <div style={{display:"flex",gap:4",flexShrink:0}}>
+                          <div style={{display:"flex",gap:4,flexShrink:0}}>
                             <button onClick={()=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,pausada:!x.pausada}:x))}
                               title={d.pausada?"Retomar disciplina":"Pausar esta disciplina"}
                               style={{background:"none",border:"none",cursor:"pointer",fontSize:14,padding:"2px 4px",color:d.pausada?"#f59e0b":"#94a3b8"}}>
