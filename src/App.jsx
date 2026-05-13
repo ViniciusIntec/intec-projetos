@@ -2516,7 +2516,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
       coresponsavel2:"", coresponsavel3:"",
       ano:new Date().getFullYear(), tipo:"PE", status:"Novo/Definir",
       prazo:0, dataContrato:"", dataEntregaPrevista:"", dataEntregaReal:"",
-      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true, pausas:[], disciplinas:[],
+      obs:"", temContrato:false, parcelas:[], driveUrl:"", driveEntregaveis:"", statusAuto:true, pausas:[], disciplinas:[], revisaoMandado:false, revisaoFeita:false, revisaoCorrigida:false, revisaoResponsavel:"",
     };
     if(!projeto) return base;
     // Spread do projeto e garantir campos do portal
@@ -2700,7 +2700,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
         </div>
         {/* Sub-abas do modal */}
         <div style={{display:"flex",gap:0,borderBottom:`2px solid ${C.cinzaCard}`}}>
-          {[{id:"info",label:"📋 Projeto"},{id:"financeiro",label:"💰 Financeiro"},{id:"portal",label:"🔗 Portal Cliente"}].map(t=>(
+          {[{id:"info",label:"📋 Projeto"},{id:"execucao",label:"⚙ Execução"},{id:"financeiro",label:"💰 Financeiro"},{id:"portal",label:"🔗 Portal Cliente"}].map(t=>(
             <button key={t.id} onClick={()=>setAbaModal(t.id)} style={{background:"none",border:"none",padding:"12px 18px",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:abaModal===t.id?700:500,color:abaModal===t.id?C.azulMedio:C.cinzaClaro,borderBottom:abaModal===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",marginBottom:-2,transition:"all 0.15s"}}>
               {t.label}
             </button>
@@ -2781,210 +2781,215 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
             </div>
           </div>
 
-          {/* ── SEÇÃO PAUSAS ── */}
+          {/* Drive & Obs (permanece na aba Projeto) */}
           <div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-              <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>
-                ⏸ Pausas do Projeto
-              </h3>
-              {(form.pausas||[]).length>0&&(
-                <span style={{fontSize:11,color:C.laranja,fontWeight:700}}>
-                  +{calcDiasPausados(form.pausas)} dias úteis adicionados ao prazo
-                </span>
-              )}
-            </div>
-
-            {/* Lista de pausas */}
-            {(form.pausas||[]).length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
-                {(form.pausas||[]).map((p,i)=>{
-                  const ativa = !p.fim;
-                  const diasP = calcDiasPausados([p]);
-                  return(
-                    <div key={i} style={{display:"flex",gap:10,alignItems:"center",padding:"10px 14px",
-                      background:ativa?"#fff7ed":"#f0fdf4",borderRadius:10,
-                      border:`1px solid ${ativa?"#fde68a":"#86efac"}`}}>
-                      <div style={{fontSize:18}}>{ativa?"⏸":"▶"}</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:700,color:ativa?"#92400e":"#166534"}}>
-                          {ativa?"Em pausa desde":"Pausa encerrada"} — {p.motivo||"sem motivo"}
-                        </div>
-                        <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>
-                          {fmtData(p.inicio)} {p.fim?`→ ${fmtData(p.fim)}`:"→ hoje"} · {diasP} dia(s) útil(eis)
-                        </div>
-                      </div>
-                      {ativa&&(
-                        retornandoIdx===i ? (
-                          <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                            <input type="date" value={dataRetorno}
-                              onChange={e=>setDataRetorno(e.target.value)}
-                              min={form.pausas[i]?.inicio}
-                              max={new Date().toISOString().slice(0,10)}
-                              style={{border:`1.5px solid ${C.verde}`,borderRadius:6,padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}/>
-                            <Btn onClick={()=>confirmarRetorno(i)} variant="verde" small disabled={!dataRetorno}>✓ Ok</Btn>
-                            <Btn onClick={()=>{setRetornandoIdx(null);setDataRetorno("");}} variant="ghost" small>✕</Btn>
-                          </div>
-                        ) : (
-                          <Btn onClick={()=>{setRetornandoIdx(i);setDataRetorno(new Date().toISOString().slice(0,10));}} variant="verde" small>▶ Retornar</Btn>
-                        )
-                      )}
-                      <button onClick={()=>removerPausa(i)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px"}}>🗑</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Adicionar nova pausa */}
-            {!(form.pausas||[]).some(p=>!p.fim)&&(
-              <div style={{background:C.cinzaFundo,borderRadius:10,padding:12,display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
-                <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                  <label style={{fontSize:11,fontWeight:600,color:C.cinzaEscuro}}>Data de início</label>
-                  <input type="date" value={novaPausa.inicio} onChange={e=>setNovaPausa(n=>({...n,inicio:e.target.value}))}
-                    style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit"}}/>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:160}}>
-                  <label style={{fontSize:11,fontWeight:600,color:C.cinzaEscuro}}>Motivo da pausa</label>
-                  <input value={novaPausa.motivo} onChange={e=>setNovaPausa(n=>({...n,motivo:e.target.value}))}
-                    placeholder="Ex: Aguardando aprovação do cliente..."
-                    style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-                </div>
-                <Btn onClick={()=>{
-                  if(!novaPausa.inicio||!novaPausa.motivo) return;
-                  adicionarPausa({inicio:novaPausa.inicio,motivo:novaPausa.motivo,fim:null});
-                  setNovaPausa({inicio:"",motivo:""});
-                  if(form.statusAuto) s("status","PAUSADO");
-                }} small disabled={!novaPausa.inicio||!novaPausa.motivo}>⏸ Pausar Projeto</Btn>
-              </div>
-            )}
-            {(form.pausas||[]).some(p=>!p.fim)&&(
-              <div style={{padding:"8px 12px",background:"#fff7ed",borderRadius:8,fontSize:12,color:"#92400e",border:"1px solid #fde68a"}}>
-                ⏸ Projeto em pausa. Clique em "▶ Retornar" acima para registrar o retorno e retomar o prazo.
-              </div>
-            )}
-          </div>
-
-          <div>
-            {/* ── CHECKLIST DE DISCIPLINAS (só para CB) ── */}
-            {form.tipo==="CB"&&(
-              <div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                  <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>
-                    ✅ Checklist de Disciplinas
-                  </h3>
-                  <span style={{fontSize:11,color:C.cinzaClaro}}>
-                    {(form.disciplinas||[]).filter(d=>d.concluido).length}/{(form.disciplinas||[]).length} concluídas
-                  </span>
-                </div>
-
-                {/* Adicionar disciplina */}
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).map(d=>(
-                    <button key={d.id} onClick={()=>s("disciplinas",[...(form.disciplinas||[]),{id:d.id,label:d.label,icone:d.icone,cor:d.cor,concluido:false,dataConclusao:"",responsavel:""}])}
-                      style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,border:`1.5px dashed ${d.cor}`,background:"transparent",color:d.cor,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",transition:"all 0.15s"}}
-                      onMouseEnter={e=>{e.currentTarget.style.background=d.cor+"15";}}
-                      onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
-                      {d.icone} + {d.id}
-                    </button>
-                  ))}
-                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).length===0&&
-                    <span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>Todas as disciplinas adicionadas</span>}
-                </div>
-
-                {/* Lista de disciplinas */}
-                {(form.disciplinas||[]).length===0&&(
-                  <div style={{padding:"16px",background:C.cinzaFundo,borderRadius:10,textAlign:"center",fontSize:12,color:C.cinzaClaro}}>
-                    Clique nos botões acima para adicionar as disciplinas deste projeto
-                  </div>
-                )}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {(form.disciplinas||[]).map((d,i)=>(
-                    <div key={d.id} style={{display:"flex",gap:10,alignItems:"center",padding:"12px 14px",
-                      borderRadius:10,border:`2px solid ${d.concluido?d.cor+"60":C.cinzaCard}`,
-                      background:d.concluido?d.cor+"08":"#fafafa",transition:"all 0.2s"}}>
-                      {/* Checkbox */}
-                      <input type="checkbox" checked={!!d.concluido}
-                        onChange={e=>{
-                          const hoje = new Date().toISOString().slice(0,10);
-                          s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,concluido:e.target.checked,dataConclusao:e.target.checked?(x.dataConclusao||hoje):""}:x));
-                        }}
-                        style={{width:18,height:18,cursor:"pointer",accentColor:d.cor}}/>
-                      {/* Ícone + label */}
-                      <div style={{fontSize:20}}>{d.icone}</div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:700,color:d.concluido?d.cor:C.cinzaEscuro,textDecoration:d.concluido?"line-through":"none"}}>
-                          {d.label} <span style={{fontSize:10,background:d.cor+"20",color:d.cor,padding:"1px 6px",borderRadius:4,fontWeight:800,textDecoration:"none",display:"inline-block"}}>{d.id}</span>
-                        </div>
-                        {/* Responsável */}
-                        <select value={d.responsavel||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,responsavel:e.target.value}:x))}
-                          style={{fontSize:11,color:C.cinzaClaro,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",marginTop:2,padding:0}}>
-                          <option value="">— Selecionar responsável —</option>
-                          {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome}</option>)}
-                        </select>
-                      </div>
-                      {/* Data de conclusão */}
-                      {d.concluido&&(
-                        <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"flex-end"}}>
-                          <label style={{fontSize:10,color:d.cor,fontWeight:700}}>Concluído em</label>
-                          <input type="date" value={d.dataConclusao||""} max={new Date().toISOString().slice(0,10)}
-                            onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,dataConclusao:e.target.value}:x))}
-                            style={{border:`1.5px solid ${d.cor}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit",color:d.cor,fontWeight:700}}/>
-                        </div>
-                      )}
-                      {!d.concluido&&(
-                        <span style={{fontSize:11,color:C.cinzaClaro,whiteSpace:"nowrap"}}>⏳ Pendente</span>
-                      )}
-                      {/* Remover */}
-                      <button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))}
-                        style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:"0 2px",flexShrink:0}}>✕</button>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Progresso visual */}
-                {(form.disciplinas||[]).length>0&&(()=>{
-                  const total = form.disciplinas.length;
-                  const ok    = form.disciplinas.filter(d=>d.concluido).length;
-                  const pct   = Math.round((ok/total)*100);
-                  return(
-                    <div style={{marginTop:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.cinzaClaro,marginBottom:4}}>
-                        <span>Progresso das disciplinas</span>
-                        <span style={{fontWeight:700,color:pct===100?C.verde:C.azulMedio}}>{pct}% ({ok}/{total})</span>
-                      </div>
-                      <div style={{background:C.cinzaCard,borderRadius:6,height:8}}>
-                        <div style={{background:pct===100?C.verde:C.azulMedio,height:8,borderRadius:6,width:`${pct}%`,transition:"width 0.4s"}}/>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Obs</h3>
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Observações</h3>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>
-                  📦 Link Entregáveis (para o cliente quando progresso = 100%)
-                  <span style={{fontSize:10,color:C.cinzaClaro,fontWeight:400,marginLeft:6}}>Link da pasta com os arquivos finais</span>
-                </label>
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <input value={form.driveEntregaveis||""} onChange={e=>s("driveEntregaveis",e.target.value)}
-                    placeholder="https://drive.google.com/drive/folders/..."
-                    style={{flex:1,border:`1.5px solid ${form.driveEntregaveis?C.verde:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontFamily:"inherit",color:C.cinzaEscuro,background:C.branco}}/>
-                  {form.driveEntregaveis&&<a href={form.driveEntregaveis} target="_blank" rel="noreferrer" style={{color:C.verde,fontSize:12,whiteSpace:"nowrap",fontWeight:700}}>📂 Testar</a>}
-                </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input value={form.driveEntregaveis||""} onChange={e=>s("driveEntregaveis",e.target.value)}
+                  placeholder="📦 Link Entregáveis (cliente vê ao 100%)..."
+                  style={{flex:1,border:`1.5px solid ${form.driveEntregaveis?C.verde:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontFamily:"inherit",color:C.cinzaEscuro}}/>
+                {form.driveEntregaveis&&<a href={form.driveEntregaveis} target="_blank" rel="noreferrer" style={{color:C.verde,fontSize:12,whiteSpace:"nowrap",fontWeight:700}}>📂 Testar</a>}
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Observações</label>
-                <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
-              </div>
+              <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} placeholder="Observações..."
+                style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
             </div>
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
             {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
             <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn></div>
+          </div>
+        </>}
+
+        {/* ─── ABA EXECUÇÃO ─── */}
+        {abaModal==="execucao" && <>
+          {/* Responsáveis por disciplina + checklist */}
+          {form.tipo==="CB" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>⚙ Disciplinas & Responsáveis</h3>
+                  <span style={{fontSize:11,color:C.cinzaClaro}}>{(form.disciplinas||[]).filter(d=>d.concluido).length}/{(form.disciplinas||[]).length} concluídas</span>
+                </div>
+                {/* Adicionar disciplina */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).map(d=>(
+                    <button key={d.id} onClick={()=>s("disciplinas",[...(form.disciplinas||[]),{id:d.id,label:d.label,icone:d.icone,cor:d.cor,concluido:false,dataConclusao:"",responsavel:"",pausada:false,obs:""}])}
+                      style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,border:`1.5px dashed ${d.cor}`,background:"transparent",color:d.cor,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>
+                      {d.icone} + {d.id}
+                    </button>
+                  ))}
+                </div>
+                {(form.disciplinas||[]).length===0&&(
+                  <div style={{padding:16,background:C.cinzaFundo,borderRadius:10,textAlign:"center",fontSize:12,color:C.cinzaClaro}}>
+                    Clique nos botões acima para adicionar as disciplinas
+                  </div>
+                )}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {(form.disciplinas||[]).map((d,i)=>(
+                    <div key={d.id} style={{borderRadius:10,border:`2px solid ${d.pausada?"#fde68a":d.concluido?d.cor+"60":C.cinzaCard}`,
+                      background:d.pausada?"#fffbeb":d.concluido?d.cor+"08":"#fafafa",padding:"12px 14px"}}>
+                      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                        {/* Check concluído */}
+                        <input type="checkbox" checked={!!d.concluido}
+                          onChange={e=>{const hoje=new Date().toISOString().slice(0,10); s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,concluido:e.target.checked,dataConclusao:e.target.checked?(x.dataConclusao||hoje):"",pausada:e.target.checked?false:x.pausada}:x));}}
+                          style={{width:18,height:18,cursor:"pointer",accentColor:d.cor}}/>
+                        <div style={{fontSize:20}}>{d.icone}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:d.pausada?"#92400e":d.concluido?d.cor:C.cinzaEscuro,textDecoration:d.concluido?"line-through":"none"}}>
+                            {d.label}
+                            <span style={{fontSize:10,background:d.cor+"20",color:d.cor,padding:"1px 6px",borderRadius:4,fontWeight:800,marginLeft:6}}>{d.id}</span>
+                            {d.pausada&&<span style={{fontSize:10,background:"#fde68a",color:"#92400e",padding:"1px 6px",borderRadius:4,fontWeight:700,marginLeft:6}}>⏸ PAUSADA</span>}
+                          </div>
+                          {/* Responsável pela disciplina */}
+                          <select value={d.responsavel||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,responsavel:e.target.value}:x))}
+                            style={{fontSize:11,color:d.responsavel?C.azulMedio:C.cinzaClaro,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",marginTop:3,padding:0,fontWeight:d.responsavel?700:400}}>
+                            <option value="">👤 Atribuir responsável</option>
+                            {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome}</option>)}
+                          </select>
+                        </div>
+                        {/* Data conclusão */}
+                        {d.concluido&&(
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:10,color:d.cor,fontWeight:700,marginBottom:2}}>Concluído em</div>
+                            <input type="date" value={d.dataConclusao||""} max={new Date().toISOString().slice(0,10)}
+                              onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,dataConclusao:e.target.value}:x))}
+                              style={{border:`1.5px solid ${d.cor}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit",color:d.cor,fontWeight:700}}/>
+                          </div>
+                        )}
+                        {!d.concluido&&(
+                          <div style={{display:"flex",gap:4",flexShrink:0}}>
+                            <button onClick={()=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,pausada:!x.pausada}:x))}
+                              title={d.pausada?"Retomar disciplina":"Pausar esta disciplina"}
+                              style={{background:"none",border:"none",cursor:"pointer",fontSize:14,padding:"2px 4px",color:d.pausada?"#f59e0b":"#94a3b8"}}>
+                              {d.pausada?"▶":"⏸"}
+                            </button>
+                            <button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))}
+                              style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:"2px 4px"}}>✕</button>
+                          </div>
+                        )}
+                        {d.concluido&&<button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:"2px 4px"}}>✕</button>}
+                      </div>
+                      {/* Obs da disciplina */}
+                      {!d.concluido&&<input value={d.obs||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,obs:e.target.value}:x))}
+                        placeholder="Observação desta disciplina (opcional)..."
+                        style={{marginTop:8,width:"100%",boxSizing:"border-box",border:`1px solid ${C.cinzaCard}`,borderRadius:6,padding:"5px 10px",fontSize:11,fontFamily:"inherit",color:C.cinzaEscuro,background:"rgba(255,255,255,0.7)"}}/>}
+                    </div>
+                  ))}
+                </div>
+                {(form.disciplinas||[]).length>0&&(()=>{
+                  const total=form.disciplinas.length; const ok=form.disciplinas.filter(d=>d.concluido).length;
+                  const pausadas=form.disciplinas.filter(d=>d.pausada).length;
+                  const pct=Math.round((ok/total)*100);
+                  return <div style={{marginTop:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.cinzaClaro,marginBottom:4}}>
+                      <span>{pausadas>0&&<span style={{color:"#f59e0b",fontWeight:700,marginRight:8}}>⏸ {pausadas} pausada(s)</span>}Progresso das disciplinas</span>
+                      <span style={{fontWeight:700,color:pct===100?C.verde:C.azulMedio}}>{pct}% ({ok}/{total})</span>
+                    </div>
+                    <div style={{background:C.cinzaCard,borderRadius:6,height:8}}><div style={{background:pct===100?C.verde:C.azulMedio,height:8,borderRadius:6,width:`${pct}%`,transition:"width 0.4s"}}/></div>
+                  </div>;
+                })()}
+              </div>
+            </div>
+          ) : (
+            <div style={{padding:20,background:C.cinzaFundo,borderRadius:10,textAlign:"center",color:C.cinzaClaro,fontSize:13}}>
+              <div style={{fontSize:32,marginBottom:8}}>⚙</div>
+              A aba de Execução com disciplinas está disponível apenas para projetos de <strong>Compatibilização (CB)</strong>.
+            </div>
+          )}
+
+          {/* Pausas do projeto */}
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>⏸ Pausas do Projeto</h3>
+              {(form.pausas||[]).length>0&&<span style={{fontSize:11,color:C.laranja,fontWeight:700}}>+{calcDiasPausados(form.pausas)} dias úteis adicionados ao prazo</span>}
+            </div>
+            {(form.pausas||[]).length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                {(form.pausas||[]).map((p,i)=>{const ativa=!p.fim; const diasP=calcDiasPausados([p]);
+                  return(<div key={i} style={{display:"flex",gap:10,alignItems:"center",padding:"10px 14px",background:ativa?"#fff7ed":"#f0fdf4",borderRadius:10,border:`1px solid ${ativa?"#fde68a":"#86efac"}`}}>
+                    <div style={{fontSize:18}}>{ativa?"⏸":"▶"}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:ativa?"#92400e":"#166534"}}>{ativa?"Em pausa desde":"Pausa encerrada"} — {p.motivo||"sem motivo"}</div>
+                      <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>{fmtData(p.inicio)} {p.fim?`→ ${fmtData(p.fim)}`:"→ hoje"} · {diasP} dia(s) útil(eis)</div>
+                    </div>
+                    {ativa&&(retornandoIdx===i?(
+                      <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                        <input type="date" value={dataRetorno} onChange={e=>setDataRetorno(e.target.value)} min={form.pausas[i]?.inicio} max={new Date().toISOString().slice(0,10)} style={{border:`1.5px solid ${C.verde}`,borderRadius:6,padding:"4px 8px",fontSize:12,fontFamily:"inherit"}}/>
+                        <Btn onClick={()=>confirmarRetorno(i)} variant="verde" small disabled={!dataRetorno}>✓ Ok</Btn>
+                        <Btn onClick={()=>{setRetornandoIdx(null);setDataRetorno("");}} variant="ghost" small>✕</Btn>
+                      </div>
+                    ):(
+                      <Btn onClick={()=>{setRetornandoIdx(i);setDataRetorno(new Date().toISOString().slice(0,10));}} variant="verde" small>▶ Retornar</Btn>
+                    ))}
+                    <button onClick={()=>removerPausa(i)} style={{background:"none",border:"none",color:C.vermelho,cursor:"pointer",fontSize:14,padding:"0 4px"}}>🗑</button>
+                  </div>);
+                })}
+              </div>
+            )}
+            {!(form.pausas||[]).some(p=>!p.fim)?(
+              <div style={{background:C.cinzaFundo,borderRadius:10,padding:12,display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                  <label style={{fontSize:11,fontWeight:600,color:C.cinzaEscuro}}>Data de início</label>
+                  <input type="date" value={novaPausa.inicio} onChange={e=>setNovaPausa(n=>({...n,inicio:e.target.value}))} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit"}}/>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:4,flex:1,minWidth:160}}>
+                  <label style={{fontSize:11,fontWeight:600,color:C.cinzaEscuro}}>Motivo da pausa</label>
+                  <input value={novaPausa.motivo} onChange={e=>setNovaPausa(n=>({...n,motivo:e.target.value}))} placeholder="Ex: Aguardando aprovação do cliente..." style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 10px",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
+                </div>
+                <Btn onClick={()=>{if(!novaPausa.inicio||!novaPausa.motivo)return; adicionarPausa({inicio:novaPausa.inicio,motivo:novaPausa.motivo,fim:null}); setNovaPausa({inicio:"",motivo:""}); if(form.statusAuto)s("status","PAUSADO");}} small disabled={!novaPausa.inicio||!novaPausa.motivo}>⏸ Pausar</Btn>
+              </div>
+            ):(
+              <div style={{padding:"8px 12px",background:"#fff7ed",borderRadius:8,fontSize:12,color:"#92400e",border:"1px solid #fde68a"}}>⏸ Projeto em pausa. Clique em "▶ Retornar" para registrar o retorno.</div>
+            )}
+          </div>
+
+          {/* Revisão do projeto */}
+          <div>
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔍 Revisão do Projeto</h3>
+            <div style={{background:C.cinzaFundo,borderRadius:10,padding:14,marginBottom:12}}>
+              <div style={{fontSize:12,color:C.cinzaClaro,marginBottom:8}}>Responsável pela revisão desta semana (da escala):</div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {(()=>{
+                  try {
+                    const dadosR = JSON.parse(localStorage.getItem("intec_escala_revisao")||"{}");
+                    if(dadosR.membros && dadosR.dataInicio){
+                      const ini = new Date(dadosR.dataInicio+"T12:00:00");
+                      const diffSem = Math.round((new Date()-ini)/(7*24*60*60*1000));
+                      const idx = ((diffSem%dadosR.membros.length)+dadosR.membros.length)%dadosR.membros.length;
+                      const resp = dadosR.membros[idx];
+                      return <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:C.azulMedio,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:11}}>{resp.slice(0,2).toUpperCase()}</div>
+                        <span style={{fontSize:14,fontWeight:700,color:C.azulEscuro}}>{resp}</span>
+                      </div>;
+                    }
+                  } catch(e){}
+                  return <span style={{fontSize:12,color:C.cinzaClaro}}>Configure a escala de revisão na aba Agenda</span>;
+                })()}
+              </div>
+            </div>
+            {/* Checklist de revisão */}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[
+                {campo:"revisaoMandado",   label:"📤 Mandado para revisão",           cor:"#2563a8"},
+                {campo:"revisaoFeita",     label:"✅ Revisão realizada pelo revisor",  cor:"#22c55e"},
+                {campo:"revisaoCorrigida", label:"🔧 Correções feitas pelo responsável", cor:"#f59e0b"},
+              ].map(item=>(
+                <label key={item.campo} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:8,
+                  background:form[item.campo]?item.cor+"10":C.cinzaFundo,
+                  border:`1.5px solid ${form[item.campo]?item.cor:C.cinzaCard}`,cursor:"pointer",transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form[item.campo]} onChange={e=>s(item.campo,e.target.checked)}
+                    style={{width:18,height:18,cursor:"pointer",accentColor:item.cor}}/>
+                  <span style={{fontSize:13,fontWeight:form[item.campo]?700:400,color:form[item.campo]?item.cor:C.cinzaEscuro}}>{item.label}</span>
+                  {form[item.campo]&&<span style={{marginLeft:"auto",fontSize:18}}>✓</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
+            <Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn>
           </div>
         </>}
 
@@ -3669,7 +3674,7 @@ function Dashboard({projetos,onAbrirProjeto,drive,onImportar,usuarioAtual}){
               <span style={{fontSize:11,color:C.cinzaClaro}}>{minhaLista.length} projeto(s)</span>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
-              {minhaLista.slice(0,8).map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}
+              {minhaLista.map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}
             </div>
           </div>
         );

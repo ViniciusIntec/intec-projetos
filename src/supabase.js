@@ -215,6 +215,10 @@ function toProjetoFront(r) {
     driveUrl:             r.drive_url || '',
     driveEntregaveis:     r.drive_entregaveis || '',
     statusAuto:           r.status_auto ?? true,
+    revisaoMandado:       r.revisao_mandado   || false,
+    revisaoFeita:         r.revisao_feita     || false,
+    revisaoCorrigida:     r.revisao_corrigida || false,
+    revisaoResponsavel:   r.revisao_responsavel || '',
     _doDrive:             r.do_drive || false,
     // Portal do cliente
     token_cliente:        r.token_cliente || '',
@@ -249,6 +253,10 @@ function toProjetoBack(p) {
     drive_url:             p.driveUrl || '',
     drive_entregaveis:    p.driveEntregaveis || '',
     status_auto:          p.statusAuto ?? true,
+    revisao_mandado:      p.revisaoMandado   || false,
+    revisao_feita:        p.revisaoFeita     || false,
+    revisao_corrigida:    p.revisaoCorrigida || false,
+    revisao_responsavel:  p.revisaoResponsavel || '',
     do_drive:              p._doDrive || false,
     // Portal do cliente — preservar token e salvar progresso/obs
     ...(p.token_cliente        ? { token_cliente:      p.token_cliente }      : {}),
