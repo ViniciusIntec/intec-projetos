@@ -4090,9 +4090,10 @@ export default function App(){
   const [registros, setRegistros] = useState([]);
   const [carregando,setCarregando]= useState(true);
 
-  // ── PWA: hooks sempre no topo, antes de qualquer return condicional ───────
+  // ── PWA + Menu: hooks sempre no topo, antes de qualquer return condicional ─
   const [pwaPrompt,   setPwaPrompt]   = useState(null);
   const [pwaInstalado,setPwaInstalado]= useState(false);
+  const [menuAberto,  setMenuAberto]  = useState(false);
   useEffect(()=>{
     const handler = (e) => { e.preventDefault(); setPwaPrompt(e); };
     window.addEventListener('beforeinstallprompt', handler);
@@ -4569,7 +4570,6 @@ export default function App(){
   const isAdmin    = user.perfil === "admin";
   const isGestorOuAdmin = ["admin","gestor"].includes(user.perfil);
   const isColab    = user.perfil === "colaborador";
-  const [menuAberto, setMenuAberto] = useState(false);
 
   // Abas principais (topbar) — só as mais usadas
   const abasPrincipais=[
