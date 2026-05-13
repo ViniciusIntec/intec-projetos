@@ -1762,46 +1762,118 @@ function BancoHoras({registros,setRegistros,usuarios,projetos,usuarioAtual,onAbr
       )}
 
       <Card style={{padding:0,overflow:"hidden"}}>
-        <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.cinzaCard}`}}><h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>📋 Histórico de Sessões</h3></div>
+        {/* Sub-abas Histórico / Horas Extras */}
+        <div style={{padding:"0 20px",borderBottom:`1px solid ${C.cinzaCard}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",gap:0}}>
+            {[{id:"historico",label:"📋 Histórico"},{id:"extras",label:"⏰ Horas Extras"}].map(t=>(
+              <button key={t.id} onClick={()=>setAbaH(t.id)}
+                style={{background:"none",border:"none",padding:"14px 18px",cursor:"pointer",fontSize:13,
+                  fontFamily:"inherit",fontWeight:abaH===t.id?700:500,
+                  color:abaH===t.id?C.azulMedio:C.cinzaClaro,
+                  borderBottom:abaH===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",
+                  marginBottom:-1,transition:"all 0.15s"}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <span style={{fontSize:11,color:C.cinzaClaro}}>{filtrados.filter(r=>abaH==="extras"?(r.minutosExtras||0)>0:true).length} registro(s)</span>
+        </div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><tr style={{background:C.azulEscuro}}>{["Data","Colaborador","Projeto","Entrada","Saída","Duração","Obs",""].map(h=><th key={h} style={{padding:"10px 14px",color:C.ciano,textAlign:"left",fontWeight:700,fontSize:11}}>{h}</th>)}</tr></thead>
+            <thead>
+              <tr style={{background:C.azulEscuro}}>
+                {(abaH==="extras"
+                  ? ["Data","Colaborador","Projeto/Atividade","Entrada","Saída","Total","H.Extra","O que fez",""]
+                  : ["Data","Tipo","Colaborador","Projeto/Atividade","Entrada","Saída","Duração","H.Extra","O que fez","Feedback",""]
+                ).map(h=><th key={h} style={{padding:"10px 14px",color:C.ciano,textAlign:"left",fontWeight:700,fontSize:11,whiteSpace:"nowrap"}}>{h}</th>)}
+              </tr>
+            </thead>
             <tbody>
-              {filtrados.length===0&&<tr><td colSpan={7} style={{padding:"24px",textAlign:"center",color:C.cinzaClaro}}>Nenhum registro encontrado</td></tr>}
-              {[...filtrados].sort((a,b)=>(b.inicioTs||0)-(a.inicioTs||0)).map((r,i)=>{
-                const u=usuarios.find(x=>x.id===r.usuarioId);
-                const proj=projetos.find(p=>p.id===r.projetoId);
-                const aberta=!r.horaFim;
-                return(<tr key={r.id} style={{borderBottom:`1px solid ${C.cinzaFundo}`,background:i%2===0?C.branco:"#f8fafc"}}>
-                  <td style={{padding:"9px 14px",color:C.cinzaClaro,whiteSpace:"nowrap"}}>{r.data?fmtData(r.data):"—"}</td>
-                  <td style={{padding:"9px 14px"}}><div style={{display:"flex",alignItems:"center",gap:8}}><Avatar u={u} size={24}/><span style={{fontWeight:600,fontSize:12}}>{u?.nome||"—"}</span></div></td>
-                  <td style={{padding:"9px 14px"}}><div style={{fontSize:11,fontWeight:700,color:C.azulMedio}}>{proj?.codigo||"—"}</div><div style={{fontSize:11,color:C.cinzaClaro}}>{proj?.cliente?.substring(0,28)||""}</div></td>
-                  <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{r.horaInicio||"—"}</td>
-                  <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{aberta?<span style={{color:C.verde,fontWeight:700}}>Em aberto</span>:r.horaFim}</td>
-                  <td style={{padding:"9px 14px",fontWeight:700,color:aberta?C.verde:C.azulEscuro}}>{aberta?"...":fmtDuracao(r.duracaoMin)}</td>
-                  <td style={{padding:"9px 14px",minWidth:180}}>
-                    {editandoObs===r.id ? (
-                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <input value={novaObs} onChange={e=>setNovaObs(e.target.value)}
-                          onKeyDown={e=>{if(e.key==="Enter")salvarObs(r.id);if(e.key==="Escape")setEditandoObs(null);}}
-                          autoFocus
-                          style={{flex:1,border:`1.5px solid ${C.azulClaro}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit"}}/>
-                        <button onClick={()=>salvarObs(r.id)} style={{background:C.verde,color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,fontWeight:700}}>✓</button>
-                        <button onClick={()=>setEditandoObs(null)} style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14}}>✕</button>
-                      </div>
-                    ):(
-                      <div style={{display:"flex",alignItems:"center",gap:6,cursor:podeEditar(r)?"pointer":"default"}}
-                        onClick={()=>{ if(podeEditar(r)){setEditandoObs(r.id);setNovaObs(r.obs||"");} }}>
-                        <span style={{color:r.obs?C.cinzaEscuro:C.cinzaClaro,fontSize:11,flex:1}}>{r.obs||"—"}</span>
-                        {podeEditar(r)&&<span style={{color:C.azulClaro,fontSize:11,opacity:0.6,flexShrink:0}}>✏</span>}
-                      </div>
-                    )}
-                  </td>
-                  {podeEditar(r)&&<td style={{padding:"9px 14px",width:40}}>
-                    <Btn onClick={e=>{e.stopPropagation();excluirSessao(r.id);}} variant="danger" small>🗑</Btn>
-                  </td>}
-                </tr>);
-              })}
+              {(()=>{
+                const lista = abaH==="extras"
+                  ? [...filtrados].filter(r=>(r.minutosExtras||0)>0).sort((a,b)=>(b.inicioTs||0)-(a.inicioTs||0))
+                  : [...filtrados].sort((a,b)=>(b.inicioTs||0)-(a.inicioTs||0));
+                if(lista.length===0) return <tr><td colSpan={11} style={{padding:"24px",textAlign:"center",color:C.cinzaClaro}}>
+                  {abaH==="extras"?"Nenhuma hora extra registrada no período 🎉":"Nenhum registro encontrado"}
+                </td></tr>;
+                return lista.map((r,i)=>{
+                  const u=usuarios.find(x=>x.id===r.usuarioId);
+                  const proj=projetos.find(p=>p.id===r.projetoId);
+                  const aberta=!r.horaFim;
+                  return(
+                    <tr key={r.id} style={{borderBottom:`1px solid ${C.cinzaFundo}`,background:i%2===0?C.branco:"#f8fafc"}}>
+                      <td style={{padding:"9px 14px",color:C.cinzaClaro,whiteSpace:"nowrap"}}>{r.data?fmtData(r.data):"—"}</td>
+                      {abaH==="historico"&&(
+                        <td style={{padding:"9px 14px"}}>
+                          {r.categoriaAdmin
+                            ? <span style={{fontSize:10,background:"#f0fdf4",color:"#166534",padding:"2px 7px",borderRadius:4,fontWeight:700}}>⚙ Adm</span>
+                            : <span style={{fontSize:10,background:"#eff6ff",color:C.azulMedio,padding:"2px 7px",borderRadius:4,fontWeight:700}}>📁 Proj</span>}
+                        </td>
+                      )}
+                      <td style={{padding:"9px 14px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <Avatar u={u} size={24}/>
+                          <span style={{fontWeight:600,fontSize:12}}>{u?.nome||"—"}</span>
+                        </div>
+                      </td>
+                      <td style={{padding:"9px 14px"}}>
+                        {r.categoriaAdmin
+                          ? <div style={{fontSize:11,fontWeight:700,color:"#166534"}}>{CATS_ADMIN.find(c=>c.id===r.categoriaAdmin)?.label||"Adm"}</div>
+                          : <><div style={{fontSize:11,fontWeight:700,color:C.azulMedio}}>{proj?.codigo||"—"}</div>
+                             <div style={{fontSize:11,color:C.cinzaClaro}}>{proj?.cliente?.substring(0,28)||""}</div></>}
+                      </td>
+                      <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{r.horaInicio||"—"}</td>
+                      <td style={{padding:"9px 14px",color:C.cinzaClaro}}>
+                        {aberta?<span style={{color:C.verde,fontWeight:700}}>Em aberto</span>:r.horaFim}
+                      </td>
+                      <td style={{padding:"9px 14px",fontWeight:700,color:aberta?C.verde:C.azulEscuro}}>
+                        {aberta?"...":fmtDuracao(r.duracaoMin)}
+                      </td>
+                      {/* H. Extra */}
+                      <td style={{padding:"9px 14px"}}>
+                        {(r.minutosExtras||0)>0
+                          ? <span style={{fontSize:11,fontWeight:700,color:C.laranja,background:"#fff7ed",padding:"2px 8px",borderRadius:4,border:"1px solid #fed7aa",whiteSpace:"nowrap"}}>+{fmtDuracao(r.minutosExtras)}</span>
+                          : <span style={{color:C.cinzaClaro,fontSize:11}}>—</span>}
+                      </td>
+                      {/* O que fez */}
+                      <td style={{padding:"9px 14px",maxWidth:160}}>
+                        <div style={{fontSize:11,color:C.cinzaEscuro,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:150}}
+                          title={r.obsInicio||r.obs||"—"}>
+                          {r.obsInicio||r.obs||<span style={{color:C.cinzaClaro}}>—</span>}
+                        </div>
+                      </td>
+                      {/* Feedback — só na aba histórico */}
+                      {abaH==="historico"&&(
+                        <td style={{padding:"9px 14px",maxWidth:160}}>
+                          {editandoObs===r.id ? (
+                            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                              <input value={novaObs} onChange={e=>setNovaObs(e.target.value)}
+                                onKeyDown={e=>{if(e.key==="Enter")salvarObs(r.id);if(e.key==="Escape")setEditandoObs(null);}}
+                                autoFocus placeholder="Feedback..."
+                                style={{flex:1,border:`1.5px solid ${C.azulClaro}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit"}}/>
+                              <button onClick={()=>salvarObs(r.id)} style={{background:C.verde,color:"#fff",border:"none",borderRadius:5,padding:"3px 8px",cursor:"pointer",fontSize:11,fontWeight:700}}>✓</button>
+                              <button onClick={()=>setEditandoObs(null)} style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14}}>✕</button>
+                            </div>
+                          ):(
+                            <div style={{display:"flex",alignItems:"center",gap:4,cursor:podeEditar(r)?"pointer":"default"}}
+                              onClick={()=>{ if(podeEditar(r)){setEditandoObs(r.id);setNovaObs(r.obsFim||"");} }}>
+                              <span style={{color:r.obsFim?C.cinzaEscuro:C.cinzaClaro,fontSize:11,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130}}
+                                title={r.obsFim||""}>
+                                {r.obsFim||<span style={{fontStyle:"italic",color:C.cinzaClaro,fontSize:10}}>+ feedback</span>}
+                              </span>
+                              {podeEditar(r)&&<span style={{color:C.azulClaro,fontSize:10,opacity:0.5}}>✏</span>}
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      {/* Excluir */}
+                      {podeEditar(r)&&<td style={{padding:"9px 14px",width:36}}>
+                        <Btn onClick={e=>{e.stopPropagation();excluirSessao(r.id);}} variant="danger" small>🗑</Btn>
+                      </td>}
+                    </tr>
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
