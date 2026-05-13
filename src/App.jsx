@@ -5,7 +5,7 @@ import { db, iniciarRealtime, enviarEmail, portal, chat } from "./supabase.js";
 const GOOGLE_CLIENT_ID = "26616128245-j4kghm435os4m3vu42tq32ikkjmbvrp6.apps.googleusercontent.com";
 const DRIVE_ROOT_ID    = "0AIRz2lul3P76Uk9PVA";
 const SCOPES           = "https://www.googleapis.com/auth/drive.readonly";
-const CHECK_INTERVAL   = 30 * 60 * 1000; // 30min
+const CHECK_INTERVAL   = 60 * 60 * 1000; // 1 hora
 
 // Solicitar permissão de notificação ao carregar
 function pedirPermissaoNotificacao() {
@@ -2716,14 +2716,6 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               <Inp label={`Código *${form._doDrive?" (não editável)":""}`} value={form.codigo} onChange={v=>s("codigo",v)} required readOnly={!!form._doDrive}/>
               <Sel label="Tipo" value={form.tipo} onChange={v=>s("tipo",v)} options={Object.entries(TIPOS).map(([k,v])=>({value:k,label:`${k} – ${v}`}))}/>
               <div style={{gridColumn:"1/-1"}}><Inp label={`Cliente / Projeto *${form._doDrive?" (importado do Drive — não editável)":""}`} value={form.cliente} onChange={v=>s("cliente",v)} required readOnly={!!form._doDrive}/></div>
-              <Sel label="Responsável" value={form.responsavel} onChange={v=>s("responsavel",v)}
-                options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-              <Sel label="Co-responsável 1" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
-                options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-              <Sel label="Co-responsável 2" value={form.coresponsavel2||""} onChange={v=>s("coresponsavel2",v)}
-                options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-              <Sel label="Co-responsável 3" value={form.coresponsavel3||""} onChange={v=>s("coresponsavel3",v)}
-                options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
               {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Ano</label><input value={form.ano} readOnly style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:14,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/></div> : <Sel label="Ano" value={form.ano} onChange={v=>s("ano",parseInt(v))} options={[2024,2025,2026,2027].map(y=>({value:y,label:y}))}/>}
               <div style={{display:"flex",flexDirection:"column",gap:4}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -2781,6 +2773,128 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
             </div>
           </div>
 
+          {/* ── EQUIPE DO PROJETO ── */}
+          <div>
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>
+              👥 Equipe & Responsabilidades
+            </h3>
+
+            {/* Projetos CB: disciplinas com responsável embutido */}
+            {form.tipo==="CB" ? (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{fontSize:12,color:C.cinzaClaro,marginBottom:4}}>
+                  Adicione as disciplinas e defina quem faz cada uma:
+                </div>
+                {/* Botões para adicionar disciplina */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
+                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).map(d=>(
+                    <button key={d.id} onClick={()=>{
+                      const nova = {id:d.id,label:d.label,icone:d.icone,cor:d.cor,concluido:false,dataConclusao:"",responsavel:"",obs:"",pausada:false};
+                      s("disciplinas",[...(form.disciplinas||[]),nova]);
+                      // Atualizar campos de responsável automaticamente ao adicionar
+                    }}
+                      style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,border:`1.5px dashed ${d.cor}`,background:"transparent",color:d.cor,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>
+                      {d.icone} + {d.id}
+                    </button>
+                  ))}
+                  {!(form.disciplinas||[]).length&&<span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>Nenhuma disciplina adicionada ainda</span>}
+                </div>
+                {/* Lista de disciplinas como cards de equipe */}
+                {(form.disciplinas||[]).map((d,i)=>(
+                  <div key={d.id} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"12px 14px",borderRadius:10,
+                    border:`2px solid ${d.pausada?"#fde68a":d.concluido?d.cor+"60":C.cinzaCard}`,
+                    background:d.pausada?"#fffbeb":d.concluido?d.cor+"06":"white"}}>
+                    {/* Ícone + badge */}
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,width:44}}>
+                      <div style={{fontSize:22}}>{d.icone}</div>
+                      <span style={{fontSize:9,background:d.cor+"20",color:d.cor,padding:"1px 5px",borderRadius:4,fontWeight:800}}>{d.id}</span>
+                    </div>
+                    {/* Conteúdo */}
+                    <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                      {/* Linha 1: label + status */}
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontSize:13,fontWeight:700,color:d.pausada?"#92400e":d.concluido?d.cor:C.cinzaEscuro,textDecoration:d.concluido?"line-through":"none"}}>{d.label}</span>
+                        {d.pausada&&<span style={{fontSize:10,background:"#fde68a",color:"#92400e",padding:"1px 6px",borderRadius:4,fontWeight:700}}>⏸ Pausada</span>}
+                        {d.concluido&&<span style={{fontSize:10,background:d.cor+"20",color:d.cor,padding:"1px 6px",borderRadius:4,fontWeight:700}}>✓ Concluída</span>}
+                      </div>
+                      {/* Linha 2: responsável (select direto) */}
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:11,color:C.cinzaClaro,flexShrink:0}}>👤 Responsável:</span>
+                        <select value={d.responsavel||""} onChange={e=>{
+                            const novoResp = e.target.value;
+                            const novas = (form.disciplinas||[]).map((x,j)=>j===i?{...x,responsavel:novoResp}:x);
+                            s("disciplinas", novas);
+                            // Sincronizar responsavel principal automaticamente
+                            const resps = novas.filter(x=>x.responsavel).map(x=>x.responsavel);
+                            const uniq = [...new Set(resps)];
+                            if(uniq[0]) s("responsavel", uniq[0]);
+                            if(uniq[1]) s("coresponsavel", uniq[1]);
+                            if(uniq[2]) s("coresponsavel2", uniq[2]);
+                            if(uniq[3]) s("coresponsavel3", uniq[3]);
+                          }}
+                          style={{flex:1,border:`1.5px solid ${d.responsavel?d.cor:C.cinzaCard}`,borderRadius:7,padding:"5px 10px",fontSize:12,fontFamily:"inherit",cursor:"pointer",background:d.responsavel?d.cor+"08":"white",fontWeight:d.responsavel?700:400,color:d.responsavel?d.cor:C.cinzaClaro}}>
+                          <option value="">— Atribuir responsável —</option>
+                          {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome}</option>)}
+                        </select>
+                      </div>
+                      {/* Linha 3: descrição do que vai fazer */}
+                      <input value={d.obs||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,obs:e.target.value}:x))}
+                        placeholder={`O que ${d.responsavel||"o responsável"} vai fazer nesta disciplina...`}
+                        style={{border:`1px solid ${C.cinzaCard}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontFamily:"inherit",color:C.cinzaEscuro,background:"#fafafa"}}/>
+                      {/* Linha 4: check concluído + data */}
+                      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                        <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11}}>
+                          <input type="checkbox" checked={!!d.concluido}
+                            onChange={e=>{const hoje=new Date().toISOString().slice(0,10);s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,concluido:e.target.checked,dataConclusao:e.target.checked?(x.dataConclusao||hoje):"",pausada:false}:x));}}
+                            style={{width:14,height:14,accentColor:d.cor}}/>
+                          <span style={{color:C.cinzaClaro}}>Marcar como concluída</span>
+                        </label>
+                        {d.concluido&&<input type="date" value={d.dataConclusao||""} max={new Date().toISOString().slice(0,10)}
+                          onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,dataConclusao:e.target.value}:x))}
+                          style={{border:`1.5px solid ${d.cor}`,borderRadius:6,padding:"3px 8px",fontSize:11,fontFamily:"inherit",color:d.cor,fontWeight:700}}/>}
+                      </div>
+                    </div>
+                    {/* Ações direita */}
+                    <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                      {!d.concluido&&<button onClick={()=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,pausada:!x.pausada}:x))}
+                        title={d.pausada?"Retomar":"Pausar esta disciplina"}
+                        style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:d.pausada?"#f59e0b":"#94a3b8",padding:2}}>
+                        {d.pausada?"▶":"⏸"}
+                      </button>}
+                      <button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))}
+                        style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:2}}>✕</button>
+                    </div>
+                  </div>
+                ))}
+                {/* Barra de progresso */}
+                {(form.disciplinas||[]).length>0&&(()=>{
+                  const total=form.disciplinas.length; const ok=form.disciplinas.filter(d=>d.concluido).length;
+                  const pausadas=form.disciplinas.filter(d=>d.pausada).length;
+                  const pct=Math.round((ok/total)*100);
+                  return <div style={{marginTop:4}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.cinzaClaro,marginBottom:4}}>
+                      <span>{pausadas>0&&<span style={{color:"#f59e0b",fontWeight:700,marginRight:8}}>⏸ {pausadas} pausada(s)</span>}Progresso</span>
+                      <span style={{fontWeight:700,color:pct===100?C.verde:C.azulMedio}}>{pct}% ({ok}/{total})</span>
+                    </div>
+                    <div style={{background:C.cinzaCard,borderRadius:6,height:8}}><div style={{background:pct===100?C.verde:C.azulMedio,height:8,borderRadius:6,width:`${pct}%`,transition:"width 0.4s"}}/></div>
+                  </div>;
+                })()}
+              </div>
+            ) : (
+              /* Outros tipos: campos simples de responsável */
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <Sel label="Responsável" value={form.responsavel} onChange={v=>s("responsavel",v)}
+                  options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+                <Sel label="Co-responsável" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
+                  options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+                <Sel label="Co-responsável 2" value={form.coresponsavel2||""} onChange={v=>s("coresponsavel2",v)}
+                  options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+                <Sel label="Co-responsável 3" value={form.coresponsavel3||""} onChange={v=>s("coresponsavel3",v)}
+                  options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+              </div>
+            )}
+          </div>
+
           {/* Drive & Obs (permanece na aba Projeto) */}
           <div>
             <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Observações</h3>
@@ -2802,102 +2916,8 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           </div>
         </>}
 
-        {/* ─── ABA EXECUÇÃO ─── */}
+        {/* ─── ABA EXECUÇÃO: PAUSAS + REVISÃO ─── */}
         {abaModal==="execucao" && <>
-          {/* Responsáveis por disciplina + checklist */}
-          {form.tipo==="CB" ? (
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              <div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                  <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:0,textTransform:"uppercase",letterSpacing:1}}>⚙ Disciplinas & Responsáveis</h3>
-                  <span style={{fontSize:11,color:C.cinzaClaro}}>{(form.disciplinas||[]).filter(d=>d.concluido).length}/{(form.disciplinas||[]).length} concluídas</span>
-                </div>
-                {/* Adicionar disciplina */}
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).map(d=>(
-                    <button key={d.id} onClick={()=>s("disciplinas",[...(form.disciplinas||[]),{id:d.id,label:d.label,icone:d.icone,cor:d.cor,concluido:false,dataConclusao:"",responsavel:"",pausada:false,obs:""}])}
-                      style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,border:`1.5px dashed ${d.cor}`,background:"transparent",color:d.cor,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>
-                      {d.icone} + {d.id}
-                    </button>
-                  ))}
-                </div>
-                {(form.disciplinas||[]).length===0&&(
-                  <div style={{padding:16,background:C.cinzaFundo,borderRadius:10,textAlign:"center",fontSize:12,color:C.cinzaClaro}}>
-                    Clique nos botões acima para adicionar as disciplinas
-                  </div>
-                )}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {(form.disciplinas||[]).map((d,i)=>(
-                    <div key={d.id} style={{borderRadius:10,border:`2px solid ${d.pausada?"#fde68a":d.concluido?d.cor+"60":C.cinzaCard}`,
-                      background:d.pausada?"#fffbeb":d.concluido?d.cor+"08":"#fafafa",padding:"12px 14px"}}>
-                      <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                        {/* Check concluído */}
-                        <input type="checkbox" checked={!!d.concluido}
-                          onChange={e=>{const hoje=new Date().toISOString().slice(0,10); s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,concluido:e.target.checked,dataConclusao:e.target.checked?(x.dataConclusao||hoje):"",pausada:e.target.checked?false:x.pausada}:x));}}
-                          style={{width:18,height:18,cursor:"pointer",accentColor:d.cor}}/>
-                        <div style={{fontSize:20}}>{d.icone}</div>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:13,fontWeight:700,color:d.pausada?"#92400e":d.concluido?d.cor:C.cinzaEscuro,textDecoration:d.concluido?"line-through":"none"}}>
-                            {d.label}
-                            <span style={{fontSize:10,background:d.cor+"20",color:d.cor,padding:"1px 6px",borderRadius:4,fontWeight:800,marginLeft:6}}>{d.id}</span>
-                            {d.pausada&&<span style={{fontSize:10,background:"#fde68a",color:"#92400e",padding:"1px 6px",borderRadius:4,fontWeight:700,marginLeft:6}}>⏸ PAUSADA</span>}
-                          </div>
-                          {/* Responsável pela disciplina */}
-                          <select value={d.responsavel||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,responsavel:e.target.value}:x))}
-                            style={{fontSize:11,color:d.responsavel?C.azulMedio:C.cinzaClaro,border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",marginTop:3,padding:0,fontWeight:d.responsavel?700:400}}>
-                            <option value="">👤 Atribuir responsável</option>
-                            {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome}</option>)}
-                          </select>
-                        </div>
-                        {/* Data conclusão */}
-                        {d.concluido&&(
-                          <div style={{textAlign:"right"}}>
-                            <div style={{fontSize:10,color:d.cor,fontWeight:700,marginBottom:2}}>Concluído em</div>
-                            <input type="date" value={d.dataConclusao||""} max={new Date().toISOString().slice(0,10)}
-                              onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,dataConclusao:e.target.value}:x))}
-                              style={{border:`1.5px solid ${d.cor}`,borderRadius:6,padding:"3px 7px",fontSize:12,fontFamily:"inherit",color:d.cor,fontWeight:700}}/>
-                          </div>
-                        )}
-                        {!d.concluido&&(
-                          <div style={{display:"flex",gap:4,flexShrink:0}}>
-                            <button onClick={()=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,pausada:!x.pausada}:x))}
-                              title={d.pausada?"Retomar disciplina":"Pausar esta disciplina"}
-                              style={{background:"none",border:"none",cursor:"pointer",fontSize:14,padding:"2px 4px",color:d.pausada?"#f59e0b":"#94a3b8"}}>
-                              {d.pausada?"▶":"⏸"}
-                            </button>
-                            <button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))}
-                              style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:"2px 4px"}}>✕</button>
-                          </div>
-                        )}
-                        {d.concluido&&<button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:"2px 4px"}}>✕</button>}
-                      </div>
-                      {/* Obs da disciplina */}
-                      {!d.concluido&&<input value={d.obs||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,obs:e.target.value}:x))}
-                        placeholder="Observação desta disciplina (opcional)..."
-                        style={{marginTop:8,width:"100%",boxSizing:"border-box",border:`1px solid ${C.cinzaCard}`,borderRadius:6,padding:"5px 10px",fontSize:11,fontFamily:"inherit",color:C.cinzaEscuro,background:"rgba(255,255,255,0.7)"}}/>}
-                    </div>
-                  ))}
-                </div>
-                {(form.disciplinas||[]).length>0&&(()=>{
-                  const total=form.disciplinas.length; const ok=form.disciplinas.filter(d=>d.concluido).length;
-                  const pausadas=form.disciplinas.filter(d=>d.pausada).length;
-                  const pct=Math.round((ok/total)*100);
-                  return <div style={{marginTop:10}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.cinzaClaro,marginBottom:4}}>
-                      <span>{pausadas>0&&<span style={{color:"#f59e0b",fontWeight:700,marginRight:8}}>⏸ {pausadas} pausada(s)</span>}Progresso das disciplinas</span>
-                      <span style={{fontWeight:700,color:pct===100?C.verde:C.azulMedio}}>{pct}% ({ok}/{total})</span>
-                    </div>
-                    <div style={{background:C.cinzaCard,borderRadius:6,height:8}}><div style={{background:pct===100?C.verde:C.azulMedio,height:8,borderRadius:6,width:`${pct}%`,transition:"width 0.4s"}}/></div>
-                  </div>;
-                })()}
-              </div>
-            </div>
-          ) : (
-            <div style={{padding:20,background:C.cinzaFundo,borderRadius:10,textAlign:"center",color:C.cinzaClaro,fontSize:13}}>
-              <div style={{fontSize:32,marginBottom:8}}>⚙</div>
-              A aba de Execução com disciplinas está disponível apenas para projetos de <strong>Compatibilização (CB)</strong>.
-            </div>
-          )}
 
           {/* Pausas do projeto */}
           <div>
@@ -4218,7 +4238,13 @@ export default function App(){
       // ── 1. VERIFICAÇÃO DE SESSÃO ATIVA ──────────────────────────────────
       const sessaoAberta = regs.find(r=>r.usuarioId===u.id&&!r.horaFim);
       if (sessaoAberta) {
-        // Só abre se não tiver modal já aberto — evita reabrir após responder
+        // Verificar se o usuário já respondeu este aviso na última hora
+        // Persiste no localStorage para sobreviver a recarregamentos de página
+        const chaveAviso = `intec_aviso_respondido_${u.id}`;
+        const ultimoResposto = parseInt(localStorage.getItem(chaveAviso)||"0");
+        const umHoraAtras = Date.now() - CHECK_INTERVAL;
+        if (ultimoResposto > umHoraAtras) return; // já respondeu, aguardar 1h
+
         setModalH(prev => {
           if (prev) return prev; // já tem modal aberto, mantém
           notificarSistema(
@@ -4328,10 +4354,9 @@ export default function App(){
       }
     };
 
-    // Roda imediatamente ao logar (com delay de 3s) e depois a cada 30min
-    const t0 = setTimeout(verificarTudo, 3000);
+    // Roda APENAS a cada 1 hora — não dispara ao logar/recarregar
     timerRef.current = setInterval(verificarTudo, CHECK_INTERVAL);
-    return()=>{ clearTimeout(t0); clearInterval(timerRef.current); };
+    return()=>{ clearInterval(timerRef.current); };
   },[user]); // NÃO depende de estado — usa refs
 
   // Verificação fim de expediente (a cada 30s para maior precisão)
@@ -4731,7 +4756,16 @@ export default function App(){
 
       {modal&&<ModalProjeto projeto={modal.projeto} modo={modal.modo} onClose={()=>setModal(null)} onSave={salvarP} onExcluir={excluirP} usuarios={usuarios}/>}
 
-      {modalH&&<ModalHoras tipo={modalH} projetos={projetos} usuarioAtual={user} sessaoAtiva={sessaoAtiva} onIniciar={iniciar} onEncerrar={encerrar} onMudar={mudar} onFechar={acao=>{ if(acao==="encerrar") encerrar(new Date().toTimeString().slice(0,5),"Encerrado pelo colaborador"); else setModalH(null); }}/>}
+      {modalH&&<ModalHoras tipo={modalH} projetos={projetos} usuarioAtual={user} sessaoAtiva={sessaoAtiva} onIniciar={iniciar} onEncerrar={encerrar} onMudar={mudar} onFechar={acao=>{
+  if(acao==="encerrar") {
+    encerrar(new Date().toTimeString().slice(0,5),"Encerrado pelo colaborador");
+  } else {
+    // "continuar" = usuário clicou "Sim, ainda estou trabalhando"
+    // Salvar timestamp para não mostrar o aviso por 1 hora
+    localStorage.setItem(`intec_aviso_respondido_${user.id}`, Date.now().toString());
+    setModalH(null);
+  }
+}}/>}
       <ChatFlutuante usuario={user} usuarios={usuarios}/>
     </div>
   );
