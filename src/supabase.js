@@ -556,16 +556,24 @@ export const chat = {
 
   // Realtime: escuta mensagens novas em um canal
   assinarCanal(canalId, onMensagem) {
-    return supabase
-      .channel(`chat-${canalId}`)
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_mensagens', filter: `canal_id=eq.${canalId}` },
-        payload => onMensagem(payload.new)
-      )
-      .subscribe();
+    // Nome único por chamada — evita conflito com canais já subscritos
+    const nomeCanal = `chat-${canalId}-${Date.now()}`;
+    const canal = supabase.channel(nomeCanal);
+    canal.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_mensagens', filter: `canal_id=eq.${canalId}` },
+      payload => { if(payload.new) onMensagem(payload.new); }
+    );
+    canal.subscribe((status) => {
+      if(status === 'SUBSCRIBED') {
+        console.log(`Chat realtime ativo: ${nomeCanal}`);
+      } else if(status === 'CHANNEL_ERROR') {
+        console.error(`Chat realtime erro: ${nomeCanal}`, status);
+      }
+    });
+    return canal;
   },
 
   desassinarCanal(canal) {
-    supabase.removeChannel(canal);
+    try { supabase.removeChannel(canal); } catch(e) {}
   },
 };
