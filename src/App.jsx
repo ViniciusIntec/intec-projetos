@@ -614,9 +614,15 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     )}
     <Inp label="Feedback / Como foi? (opcional)" value={obs} onChange={setObs}
       placeholder="Ex: Modelagem concluída, falta lançar fundações..."/>
-      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-        <Btn variant="ghost" onClick={onFechar}>Cancelar</Btn>
-        <Btn variant="verde" onClick={()=>onEncerrar(hf,obs)} disabled={!horaValida}>✔ Encerrar e Salvar</Btn>
+      <div style={{display:"flex",gap:8,justifyContent:"space-between",flexWrap:"wrap"}}>
+        <Btn variant="secondary" small onClick={()=>onFechar("continuar_extra")}
+          title="Encerra a sessão atual e inicia nova como hora extra">
+          ⏰ Continuar em hora extra
+        </Btn>
+        <div style={{display:"flex",gap:8}}>
+          <Btn variant="ghost" onClick={onFechar}>Cancelar</Btn>
+          <Btn variant="verde" onClick={()=>onEncerrar(hf,obs)} disabled={!horaValida}>✔ Encerrar</Btn>
+        </div>
       </div>
     </>, "🏁 Encerrar Expediente", "Registre o horário de saída para finalizar o dia", C.azulEscuro, C.azulMedio);
   }
@@ -4150,7 +4156,9 @@ export default function App(){
   const userRef       = useRef(null);
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
-  useEffect(() => { registrosRef.current = registros; }, [registros]);
+  useEffect(() => {
+    registrosRef.current = registros;
+  }, [registros]);
   useEffect(() => { projetosRef.current  = projetos;   }, [projetos]);
   useEffect(() => { userRef.current      = user;        }, [user]);
 
@@ -4383,13 +4391,13 @@ export default function App(){
       } else if(diff >= 5){
         // 5+ minutos após o expediente sem resposta — encerra automaticamente
         if(encerrarRef.current) {
+          // Bug 3/4: pegar sessão ANTES de encerrar para o email
+          const uAtual = registrosRef.current.find(r => r.usuarioId === user.id && !r.horaFim);
           encerrarRef.current(fim, "Encerrado automaticamente pelo sistema");
           notificarSistema(
             "⏹ INTEC — Sessão Encerrada",
             `Sua sessão foi encerrada automaticamente às ${fim}. Expediente finalizado!`,
           );
-          // Notificar colaborador e gestor por email
-          const uAtual = registrosRef.current.find(r => r.usuarioId === user.id && !r.horaFim);
           if(uAtual) {
             const proj = uAtual.projetoId
               ? `Projeto ${uAtual.projetoId}`
@@ -4411,60 +4419,83 @@ export default function App(){
   const sessaoAtiva=registros.find(r=>r.usuarioId===user?.id&&!r.horaFim);
 
   // ── Sessões ──
+  // ── INICIAR SESSÃO ─────────────────────────────────────────────────────────
+  // Bug fix: bloqueia início se já existe sessão aberta do mesmo usuário
   const iniciar = async (projetoId, hi, obsInicio, categoriaAdmin=null) => {
+    // Bug 2: verificar se já existe sessão aberta — não permitir duplicata
+    const jaAberta = registrosRef.current.find(r => r.usuarioId===user.id && !r.horaFim);
+    if (jaAberta) {
+      console.warn("Já existe sessão aberta, ignorando iniciar()");
+      setModalH(null);
+      return;
+    }
     const dataHoje = new Date().toISOString().slice(0,10);
     const uExp = usuarios.find(u2=>u2.id===user.id)?.expediente;
-    // Verificar se horário de início é fora do expediente
-    const { eHoraExtra, minutosExtras: mExt } = verificarHoraExtra(hi, hi, uExp, dataHoje);
     const nova = {
-      id: Date.now().toString(), usuarioId:user.id,
-      projetoId: projetoId||null,
+      id: Date.now().toString(),
+      usuarioId:      user.id,
+      projetoId:      projetoId||null,
       categoriaAdmin: categoriaAdmin||null,
-      data: dataHoje,
-      horaInicio:hi, horaFim:null, duracaoMin:null,
-      minutosExtras:0, foraDoExpediente: eHoraExtra,
-      inicioTs:Date.now(),
-      obsInicio: obsInicio||"",
-      obsFim: "",
-      obs: obsInicio||"", // compatibilidade
+      data:           dataHoje,
+      horaInicio:     hi,
+      horaFim:        null,
+      duracaoMin:     null,
+      minutosExtras:  0,
+      inicioTs:       Date.now(),
+      obsInicio:      obsInicio||"",
+      obsFim:         "",
+      obs:            obsInicio||"",
     };
-    setRegistros(x => [...x, nova]);
+    // Atualizar estado e ref imediatamente — evita race condition
+    setRegistros(prev => { const novo = [...prev, nova]; registrosRef.current = novo; return novo; });
     setModalH(null);
-    try { await db.sessoes.salvar(nova); } catch(e){ console.error("Erro salvar sessao:", e); }
+    try {
+      await db.sessoes.salvar(nova);
+    } catch(e) { console.error("Erro salvar sessao:", e); }
   };
 
+  // ── ENCERRAR SESSÃO ─────────────────────────────────────────────────────────
+  // Bug fix: usa ID fixo da sessão, não busca por !horaFim no momento do setState
   const encerrar = async (hf, obsFim) => {
-    let sessaoId = null;
-    let sessaoSnap = null;
-    setRegistros(x => x.map(r => {
-      if(r.usuarioId===user.id && !r.horaFim){
-        const dur = Math.max(0, horaMin(hf) - horaMin(r.horaInicio));
-        const u   = usuarios.find(u2=>u2.id===r.usuarioId);
-        const {minutosExtras} = verificarHoraExtra(r.horaInicio, hf, u?.expediente, r.data);
-        sessaoId  = r.id;
-        sessaoSnap= r;
-        return {
-          ...r,
-          horaFim: hf,
-          duracaoMin: dur,
-          minutosExtras,
-          obsFim: obsFim||"",
-          obs: r.obsInicio||r.obs||"", // preserva obs de início
-        };
-      }
-      return r;
-    }));
-    setModalH(null);
-    if(sessaoId && sessaoSnap) {
-      const dur = Math.max(0, horaMin(hf) - horaMin(sessaoSnap.horaInicio));
-      const u   = usuarios.find(u2=>u2.id===sessaoSnap.usuarioId);
-      const {minutosExtras} = verificarHoraExtra(sessaoSnap.horaInicio, hf, u?.expediente, sessaoSnap.data);
-      try {
-        await db.sessoes.encerrarCompleto(sessaoId, hf, dur,
-          sessaoSnap.obsInicio||sessaoSnap.obs||"",
-          obsFim||"", minutosExtras);
-      } catch(e){ console.error("Erro encerrar sessao:", e); }
+    // Pegar a sessão aberta ANTES de qualquer setState
+    const sessaoAberta = registrosRef.current.find(r => r.usuarioId===user.id && !r.horaFim);
+    if (!sessaoAberta) {
+      console.warn("Nenhuma sessão aberta para encerrar");
+      setModalH(null);
+      return;
     }
+
+    const sessaoId  = sessaoAberta.id;
+    const horaInicio= sessaoAberta.horaInicio;
+    const dataS     = sessaoAberta.data;
+    const uExp      = usuarios.find(u2=>u2.id===user.id)?.expediente;
+    const dur       = Math.max(0, horaMin(hf) - horaMin(horaInicio));
+    const {minutosExtras} = verificarHoraExtra(horaInicio, hf, uExp, dataS);
+    const sessaoFechada = {
+      ...sessaoAberta,
+      horaFim:       hf,
+      duracaoMin:    dur,
+      minutosExtras,
+      obsFim:        obsFim||"",
+      obs:           sessaoAberta.obsInicio||sessaoAberta.obs||"",
+    };
+
+    // Bug 1 e 3: atualizar estado e ref atomicamente pelo ID — nunca pelo !horaFim
+    setRegistros(prev => {
+      const novo = prev.map(r => r.id===sessaoId ? sessaoFechada : r);
+      registrosRef.current = novo; // manter ref sincronizada
+      return novo;
+    });
+    setModalH(null);
+
+    // Persistir no banco
+    try {
+      await db.sessoes.encerrarCompleto(
+        sessaoId, hf, dur,
+        sessaoAberta.obsInicio||sessaoAberta.obs||"",
+        obsFim||"", minutosExtras
+      );
+    } catch(e) { console.error("Erro encerrar sessao:", e); }
   };
 
   // Atualizar ref da função encerrar para o timer sempre usar a versão mais recente
@@ -4759,9 +4790,20 @@ export default function App(){
       {modalH&&<ModalHoras tipo={modalH} projetos={projetos} usuarioAtual={user} sessaoAtiva={sessaoAtiva} onIniciar={iniciar} onEncerrar={encerrar} onMudar={mudar} onFechar={acao=>{
   if(acao==="encerrar") {
     encerrar(new Date().toTimeString().slice(0,5),"Encerrado pelo colaborador");
+  } else if(acao==="continuar_extra") {
+    // Bug 2: continuar após expediente = encerra sessão atual e abre nova como hora extra
+    const agora = new Date().toTimeString().slice(0,5);
+    const sessaoAtual = registrosRef.current.find(r=>r.usuarioId===user.id&&!r.horaFim);
+    if(sessaoAtual){
+      encerrar(agora, "Encerrado no fim do expediente — continuou em hora extra");
+      setTimeout(()=>{
+        // Abrir nova sessão como hora extra com mesmo projeto
+        iniciar(sessaoAtual.projetoId, agora, sessaoAtual.obsInicio||"", sessaoAtual.categoriaAdmin);
+      }, 500);
+    }
+    setModalH(null);
   } else {
-    // "continuar" = usuário clicou "Sim, ainda estou trabalhando"
-    // Salvar timestamp para não mostrar o aviso por 1 hora
+    // Confirmou que ainda está trabalhando — salvar timestamp
     localStorage.setItem(`intec_aviso_respondido_${user.id}`, Date.now().toString());
     setModalH(null);
   }
