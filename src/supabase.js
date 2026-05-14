@@ -606,16 +606,22 @@ export const chat = {
     return sub;
   },
 
-  // Escuta qualquer INSERT em chat_canais (canais públicos criados por qualquer usuário)
-  assinarCanaisPublicos(onNovoCanal) {
+  // Escuta qualquer INSERT ou DELETE em chat_canais
+  assinarCanaisPublicos(onNovoCanal, onDeletarCanal) {
     const nome = `chat-canais-${Date.now()}`;
     const sub = supabase.channel(nome);
     sub.on('postgres_changes',
-      // Sem filtro — pega todos os INSERTs e filtra no callback
       { event: 'INSERT', schema: 'public', table: 'chat_canais' },
       payload => {
         console.log('[Chat Realtime] Novo canal detectado:', payload.new);
         if(payload.new) onNovoCanal(payload.new);
+      }
+    );
+    sub.on('postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'chat_canais' },
+      payload => {
+        console.log('[Chat Realtime] Canal deletado:', payload.old);
+        if(payload.old?.id) onDeletarCanal(payload.old.id);
       }
     );
     sub.subscribe((status, err) => {

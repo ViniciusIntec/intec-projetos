@@ -4421,17 +4421,38 @@ export default function App(){
     chatMembrosSub.current = subMembros;
 
     // Escuta criação de canais públicos por qualquer usuário
-    const subCanaisPublicos = chat.assinarCanaisPublicos((novoCanal) => {
-      if(cancelado) return;
-      // Adicionar canal na lista se ainda não existir
-      setChatCanais(prev=>{
-        if(prev.find(c=>c.id===novoCanal.id)) return prev;
-        return [...prev, novoCanal];
-      });
-      // Assinar mensagens desse novo canal
-      assinarCanalGlobal(novoCanal);
-      // Não fazer badge — canal novo não tem mensagens ainda
-    });
+    const subCanaisPublicos = chat.assinarCanaisPublicos(
+      (novoCanal) => {
+        if(cancelado) return;
+        setChatCanais(prev=>{
+          if(prev.find(c=>c.id===novoCanal.id)) return prev;
+          return [...prev, novoCanal];
+        });
+        assinarCanalGlobal(novoCanal);
+      },
+      (canalId) => {
+        if(cancelado) return;
+        // Remover da lista para todos
+        setChatCanais(prev=>{
+          const nova = prev.filter(c=>c.id!==canalId);
+          // Se estava visualizando esse canal, mudar para o primeiro disponível
+          if(canalAtivoRef.current?.id===canalId){
+            const prox = nova.find(c=>c.tipo==="canal")||null;
+            setChatCanalAtivo(prox);
+            canalAtivoRef.current = prox;
+            setChatMensagens([]);
+            if(prox) chatSelecionarCanal(prox);
+          }
+          return nova;
+        });
+        // Limpar assinatura de mensagens do canal deletado
+        if(chatSubsRef.current[canalId]){
+          chat.desassinarCanal(chatSubsRef.current[canalId]);
+          delete chatSubsRef.current[canalId];
+        }
+        setChatNaoLidos(prev=>{ const n={...prev}; delete n[canalId]; return n; });
+      }
+    );
     chatCanaisPublicosSub.current = subCanaisPublicos;
 
     return ()=>{
