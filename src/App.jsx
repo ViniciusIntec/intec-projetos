@@ -31,6 +31,23 @@ function notificarSistema(titulo, corpo, tag="intec-geral", duracaoMs=10000) {
   } catch(e) { console.warn("Notificação:", e); }
 }
 
+// Som de notificação do chat (Web Audio API — sem arquivo externo)
+function tocarSomChat() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain= ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime+0.08);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime+0.3);
+    ctx.close();
+  } catch(e){}
+}
+
 // Controle de notificações já enviadas (evitar repetir na mesma sessão)
 const _notifsEnviadas = new Set();
 function notificarUmaVez(chave, titulo, corpo, tag) {
@@ -3735,7 +3752,7 @@ function Financeiro({projetos}){
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT INTEC — reescrito com realtime correto
 // ══════════════════════════════════════════════════════════════════════════════
-function Chat({ usuario, usuarios, flutuante=false, onFechar }) {
+function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
   const [canais,       setCanais]    = useState([]);
   const [canalAtivo,   setCanalAtivo]= useState(null);
   const [mensagens,    setMensagens] = useState([]);
@@ -3768,40 +3785,37 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar }) {
         setCanalAtivo(publicos[0]);
         canalAtivoRef.current = publicos[0];
       }
-      // Assinar todos os canais para notificações em background
+      // Assinar todos os canais — sempre usando ref atualizado
       todos.forEach(c=>{
-        if(assinaturasRef.current[c.id]) return; // já assinado
-        const sub = chat.assinarCanal(c.id, (msg)=>{
-          const canalAtualId = canalAtivoRef.current?.id;
-          if(canalAtualId===c.id){
-            // Canal aberto — adicionar mensagem diretamente
-            setMensagens(prev=>[...prev, msg]);
-          } else {
-            // Canal em background — incrementar não lidos
-            if(msg.autor_id!==usuario.id){
-              setNaoLidos(prev=>({...prev,[c.id]:(prev[c.id]||0)+1}));
-            }
+        if(assinaturasRef.current[c.id]) return;
+        const canalId = c.id;
+        const sub = chat.assinarCanal(canalId, (msg)=>{
+          // Usar sempre o ref — nunca closure stale
+          const canalAberto = canalAtivoRef.current?.id === canalId;
+          if(canalAberto){
+            // Mensagem no canal aberto — adiciona sem duplicar (verifica temp)
+            setMensagens(prev=>{
+              if(prev.find(m=>m.id===msg.id)) return prev; // já existe
+              // Remove eventual temp do mesmo autor com mesmo conteúdo
+              const semTemp = prev.filter(m=>!(m.id?.startsWith("temp-")&&m.autor_id===msg.autor_id&&m.conteudo===msg.conteudo));
+              return [...semTemp, msg];
+            });
+          } else if(msg.autor_id!==usuario.id){
+            setNaoLidos(prev=>({...prev,[canalId]:(prev[canalId]||0)+1}));
           }
-          // Notificação se não for o próprio usuário
+          // Som + notificação para mensagens de outros
           if(msg.autor_id!==usuario.id){
+            tocarSomChat();
             const cNome = c.tipo==="direto"
               ? c.nome.split("↔").find(n=>n.trim()!==usuario.nome)?.trim()||"Direto"
               : "# "+c.nome;
-            notificarSistema(
-              `💬 ${msg.autor_nome} em ${cNome}`,
-              msg.conteudo.slice(0,80),
-              "intec-chat-"+c.id, 7000
-            );
+            notificarSistema(`💬 ${msg.autor_nome} em ${cNome}`,msg.conteudo.slice(0,80),"intec-chat-"+canalId,7000);
             if((msg.mencoes||[]).includes(usuario.id)){
-              notificarSistema(
-                `🔔 ${msg.autor_nome} mencionou você!`,
-                msg.conteudo.slice(0,80),
-                "intec-mencao", 10000
-              );
+              notificarSistema(`🔔 ${msg.autor_nome} mencionou você!`,msg.conteudo.slice(0,80),"intec-mencao",10000);
             }
           }
         });
-        assinaturasRef.current[c.id] = sub;
+        assinaturasRef.current[canalId] = sub;
       });
     }).catch(console.error);
 
@@ -3925,6 +3939,8 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar }) {
     });
   };
   const totalNaoLidos = Object.values(naoLidos).reduce((a,b)=>a+b,0);
+  // Comunicar badge ao ChatFlutuante
+  useEffect(()=>{ onNaoLidos?.(totalNaoLidos); },[totalNaoLidos]);
 
   return(
     <div style={{display:"flex",height:flutuante?480:620,background:C.branco,borderRadius:flutuante?14:12,overflow:"hidden",border:`1px solid ${C.cinzaCard}`,boxShadow:flutuante?"0 8px 32px rgba(0,0,0,0.2)":"none",position:"relative"}}>
@@ -4155,30 +4171,58 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar }) {
 
 
 function ChatFlutuante({ usuario, usuarios }) {
-  const [aberto, setAberto] = useState(false);
-  const [naoLidos, setNaoLidos] = useState(0);
+  const [aberto,    setAberto]    = useState(false);
+  const [naoLidos,  setNaoLidos]  = useState(0);
+  const [pulsando,  setPulsando]  = useState(false);
+
+  // Recebe contagem do componente Chat filho
+  const onNaoLidos = (total) => {
+    if(total > naoLidos && !aberto) {
+      setPulsando(true);
+      setTimeout(()=>setPulsando(false), 1000);
+    }
+    setNaoLidos(total);
+  };
 
   return (
     <div style={{position:"fixed",bottom:24,right:24,zIndex:1500}}>
       {aberto&&(
-        <div style={{position:"absolute",bottom:68,right:0,width:680,maxWidth:"95vw"}}>
-          <Chat usuario={usuario} usuarios={usuarios} flutuante onFechar={()=>setAberto(false)}/>
+        <div style={{position:"absolute",bottom:68,right:0,width:700,maxWidth:"96vw"}}>
+          <Chat usuario={usuario} usuarios={usuarios} flutuante
+            onFechar={()=>setAberto(false)}
+            onNaoLidos={onNaoLidos}/>
         </div>
       )}
-      <button onClick={()=>setAberto(a=>!a)}
-        style={{width:52,height:52,borderRadius:"50%",background:aberto?C.azulEscuro:`linear-gradient(135deg,${C.azulMedio},${C.ciano})`,
-          border:"none",cursor:"pointer",boxShadow:"0 4px 16px rgba(26,58,107,0.4)",
+      <button onClick={()=>{setAberto(a=>!a); if(!aberto) setNaoLidos(0);}}
+        style={{width:54,height:54,borderRadius:"50%",
+          background:aberto?C.azulEscuro:`linear-gradient(135deg,${C.azulMedio},${C.ciano})`,
+          border:"none",cursor:"pointer",
+          boxShadow:pulsando?"0 0 0 8px rgba(37,99,168,0.3)":"0 4px 16px rgba(26,58,107,0.4)",
           display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,
-          transition:"all 0.2s",color:C.branco,position:"relative"}}>
+          transition:"all 0.3s",color:C.branco,position:"relative",
+          animation:pulsando?"chatPulse 0.5s ease-in-out":"none"}}>
         {aberto?"✕":"💬"}
         {naoLidos>0&&!aberto&&(
-          <div style={{position:"absolute",top:-4,right:-4,background:C.vermelho,color:C.branco,
-            borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",
-            justifyContent:"center",fontSize:10,fontWeight:800}}>
-            {naoLidos}
+          <div style={{position:"absolute",top:-5,right:-5,background:C.vermelho,color:C.branco,
+            borderRadius:"50%",minWidth:20,height:20,display:"flex",alignItems:"center",
+            justifyContent:"center",fontSize:11,fontWeight:800,padding:"0 4px",
+            boxShadow:"0 2px 6px rgba(0,0,0,0.3)",
+            animation:"badgePop 0.3s ease-out"}}>
+            {naoLidos>9?"9+":naoLidos}
           </div>
         )}
       </button>
+      <style>{`
+        @keyframes chatPulse {
+          0%,100%{transform:scale(1)}
+          50%{transform:scale(1.12)}
+        }
+        @keyframes badgePop {
+          0%{transform:scale(0)}
+          70%{transform:scale(1.2)}
+          100%{transform:scale(1)}
+        }
+      `}</style>
     </div>
   );
 }
