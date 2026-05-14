@@ -4059,9 +4059,8 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
                 <span style={{fontSize:12,color:ativo?C.branco:"rgba(255,255,255,0.7)",fontWeight:ativo||nl>0?700:400,flex:1}}>{nomeOutro}</span>
                 {nl>0&&<span style={{background:C.vermelho,color:"#fff",borderRadius:10,fontSize:10,fontWeight:800,padding:"1px 5px",minWidth:18,textAlign:"center"}}>{nl}</span>}
                 <button onClick={e=>{e.stopPropagation();setConfirmDelDM(c.id);}}
-                  style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:11,padding:0,opacity:0,transition:"opacity 0.1s"}}
-                  title="Apagar conversa"
-                  onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0}>🗑</button>
+                  style={{background:"rgba(255,255,255,0.08)",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:12,padding:"2px 5px",borderRadius:4,flexShrink:0}}
+                  title="Apagar conversa">🗑</button>
               </div>
             );
           })}
