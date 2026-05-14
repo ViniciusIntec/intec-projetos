@@ -4294,8 +4294,15 @@ export default function App(){
   }, [user?.id]);
 
   // ── Helper: assinar canal (reutilizável para novos DMs) ─────────────────
+  const chatCanaisAutorizados = useRef(new Set()); // IDs que o usuário pode ver
+
   const assinarCanalGlobal = useCallback((c) => {
     if(chatSubsRef.current[c.id]) return;
+    // SEGURANÇA: DMs só podem ser assinadas se o usuário for membro autorizado.
+    // Canais públicos (tipo='canal') todos podem assinar.
+    // DMs só chegam aqui via assinarMembros ou chatIniciarDM — ambos já verificados.
+    // Se for DM e não estiver no set de autorizados, ignorar.
+    if(c.tipo === 'direto' && !chatCanaisAutorizados.current.has(c.id)) return;
     const sub = chat.assinarCanal(c.id, (msg) => {
       const canalAberto = canalAtivoRef.current?.id === c.id && chatAbertoRef.current;
       if(canalAberto) {
@@ -4351,6 +4358,7 @@ export default function App(){
   // ── Helper: iniciar DM ────────────────────────────────────────────────────
   const chatIniciarDM = useCallback(async (outro) => {
     const canal = await chat.obterOuCriarDM(user.id,outro.id,user.nome,outro.nome);
+    chatCanaisAutorizados.current.add(canal.id); // autorizar antes de assinar
     setChatCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
     assinarCanalGlobal(canal);
     chatSelecionarCanal(canal);
@@ -4391,13 +4399,15 @@ export default function App(){
   useEffect(()=>{
     if(!user) return;
     let cancelado = false;
+    chatCanaisAutorizados.current = new Set(); // limpar ao trocar usuário
     const init = async () => {
       try {
         const lista = await chat.listarCanais(user.id);
         if(cancelado) return;
+        // Registrar todos os canais que o usuário pode ver
+        lista.forEach(c => chatCanaisAutorizados.current.add(c.id));
         setChatCanais(lista);
         lista.forEach(c => assinarCanalGlobal(c));
-        // Abrir no primeiro canal público
         const primeiro = lista.find(c=>c.tipo==="canal");
         if(primeiro && !canalAtivoRef.current) {
           chatSelecionarCanal(primeiro);
@@ -4409,10 +4419,10 @@ export default function App(){
     // Escuta quando o usuário é adicionado a um novo DM
     const subMembros = chat.assinarMembros(user.id, (novoCanal) => {
       if(cancelado) return;
-      // Não duplicar canal que o próprio usuário criou (chatIniciarDM já adicionou)
+      // Autorizar antes de assinar
+      chatCanaisAutorizados.current.add(novoCanal.id);
       setChatCanais(prev=>prev.find(c=>c.id===novoCanal.id)?prev:[...prev,novoCanal]);
       assinarCanalGlobal(novoCanal);
-      // Badge + notificação só para quem RECEBEU o DM (não quem criou)
       setChatNaoLidos(prev=>({...prev,[novoCanal.id]:1}));
       setChatPulsando(true); setTimeout(()=>setChatPulsando(false),800);
       const quem = (novoCanal.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"alguém";
@@ -4424,6 +4434,9 @@ export default function App(){
     const subCanaisPublicos = chat.assinarCanaisPublicos(
       (novoCanal) => {
         if(cancelado) return;
+        // IMPORTANTE: ignorar DMs — elas chegam via assinarMembros filtrado por usuário
+        // Se processar aqui, todos veriam DMs privadas de outros usuários
+        if(novoCanal.tipo !== 'canal') return;
         setChatCanais(prev=>{
           if(prev.find(c=>c.id===novoCanal.id)) return prev;
           return [...prev, novoCanal];
