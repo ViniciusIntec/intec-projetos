@@ -3794,102 +3794,45 @@ function Financeiro({projetos}){
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT INTEC — reescrito com realtime correto
 // ══════════════════════════════════════════════════════════════════════════════
-function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegisterCallback }) {
-  const [canais,       setCanais]    = useState([]);
-  const [canalAtivo,   setCanalAtivo]= useState(null);
-  const [mensagens,    setMensagens] = useState([]);
+// ─── CHAT UI (estado vive no App) ────────────────────────────────────────────
+function Chat({
+  usuario, usuarios,
+  // estado gerenciado pelo App:
+  canais, canalAtivo, onSelecionarCanal,
+  mensagens, naoLidos,
+  onEnviar, onIniciarDM, onCriarCanal, onDeletarDM,
+  onFechar, flutuante,
+}) {
   const [texto,        setTexto]     = useState("");
   const [carregando,   setCarreg]    = useState(false);
   const [mostrarEmoji, setEmoji]     = useState(false);
   const [mostrarDM,    setMostrarDM] = useState(false);
   const [criandoCanal, setCriando]   = useState(false);
   const [novoCanal,    setNovoCanal] = useState({nome:"",descricao:"",icone:"💬"});
-  const [naoLidos,     setNaoLidos]  = useState({});  // {canalId: count}
   const [confirmDelDM, setConfirmDelDM] = useState(null);
-  const [sugestoes,    setSugestoes]    = useState([]); // autocomplete @
+  const [sugestoes,    setSugestoes]    = useState([]);
   const [sugestaoIdx,  setSugestaoIdx]  = useState(0);
-  const [mencaoBadge,  setMencaoBadge]  = useState(false); // badge especial menção
   const isGestor = ["admin","gestor"].includes(usuario?.perfil);
   const mensagensRef = useRef(null);
   const inputRef     = useRef(null);
-  const assinaturasRef = useRef({});
-  const canalAtivoRef  = useRef(null);
+  const prevCanalId  = useRef(null);
 
   const EMOJIS = ["😀","😂","👍","👎","❤️","🔥","✅","⚠️","📋","📁","💰","🏗","🎉","👀","🤔","💡"];
 
-  // ── Carregar canais + assinar TODOS para contar não lidos ─────────────────
-  useEffect(()=>{
-    if(!usuario) return;
-    chat.listarCanais(usuario?.id).then(lista=>{
-      // Filtrar DMs — mostrar só as que o usuário é membro
-      const publicos = lista.filter(c=>c.tipo==="canal");
-      const dms      = lista.filter(c=>c.tipo==="direto");
-      const todos    = [...publicos,...dms];
-      setCanais(todos);
-      if(publicos.length>0 && !canalAtivoRef.current) {
-        setCanalAtivo(publicos[0]);
-        canalAtivoRef.current = publicos[0];
-      }
-    }).catch(console.error);
-  },[usuario?.id]);
-
-  // ── Carregar mensagens ao trocar de canal ────────────────────────────────
-  useEffect(()=>{
-    if(!canalAtivo) return;
-    canalAtivoRef.current = canalAtivo;
-    setCarreg(true);
-    chat.listarMensagens(canalAtivo.id,100)
-      .then(msgs=>{ setMensagens(msgs); setCarreg(false); })
-      .catch(()=>setCarreg(false));
-    // Zerar não lidos deste canal (local + recalcula total via onNaoLidos)
-    setNaoLidos(prev=>{
-      const novo = {...prev,[canalAtivo.id]:0};
-      // Recalcular total e avisar o pai
-      const total = Object.values(novo).reduce((a,b)=>a+b,0);
-      onNaoLidos?.(total);
-      return novo;
-    });
-    if(usuario) chat.marcarLido(canalAtivo.id, usuario.id).catch(()=>{});
-    setTimeout(()=>inputRef.current?.focus(),100);
-  },[canalAtivo?.id]);
-
-  // ── Scroll automático ────────────────────────────────────────────────────
+  // ── Scroll automático quando mensagens mudam ─────────────────────────────
   useEffect(()=>{
     if(mensagensRef.current)
       mensagensRef.current.scrollTop = mensagensRef.current.scrollHeight;
   },[mensagens]);
 
-  // ── Registrar callbacks no sistema global (realtime + novoCanal + naoLidos) ──
+  // ── Focar input ao trocar de canal ───────────────────────────────────────
   useEffect(()=>{
-    if(!onRegisterCallback) return;
-    // Objeto com três handlers que o App chama
-    const handlers = {
-      // Mensagem nova em algum canal
-      mensagem: (canalId, msg) => {
-        if(msg.autor_id === usuario?.id) return; // própria msg já foi via optimistic
-        const estaNoCanal = canalAtivoRef.current?.id === canalId;
-        if(estaNoCanal) {
-          setMensagens(prev=>{
-            if(prev.find(m=>m.id===msg.id)) return prev;
-            return [...prev, msg];
-          });
-          if(usuario) chat.marcarLido(canalId, usuario.id).catch(()=>{});
-        } else {
-          setNaoLidos(prev=>({...prev,[canalId]:(prev[canalId]||0)+1}));
-        }
-      },
-      // Novo canal/DM criado para este usuário
-      novoCanal: (canal) => {
-        setCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
-      },
-      // Sincronizar naoLidos com o ref global do App
-      atualizarNaoLidos: (mapa) => {
-        setNaoLidos(mapa);
-      },
-    };
-    onRegisterCallback(handlers);
-    return ()=>{ onRegisterCallback(null); };
-  },[onRegisterCallback, usuario?.id]);
+    if(!canalAtivo) return;
+    if(prevCanalId.current !== canalAtivo?.id){
+      prevCanalId.current = canalAtivo?.id;
+      setTimeout(()=>inputRef.current?.focus(), 100);
+    }
+  },[canalAtivo?.id]);
 
   // ── Enviar mensagem ──────────────────────────────────────────────────────
   const selecionarMencao = (u) => {
@@ -3907,70 +3850,29 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
     }, 0);
   };
 
-  const enviar = async ()=>{
+  const enviar = () => {
     if(!texto.trim()||!canalAtivo||!usuario) return;
     const mencoes = usuarios.filter(u=>texto.includes(`@${u.nome}`)).map(u=>u.id);
-    const msg = texto.trim();
+    onEnviar(canalAtivo.id, texto.trim(), mencoes);
     setTexto("");
     inputRef.current?.focus();
-    // Otimistic update — adiciona localmente imediatamente
-    const tempId = "temp-"+Date.now();
-    const tempMsg = {
-      id:tempId, canal_id:canalAtivo.id,
-      autor_id:usuario.id, autor_nome:usuario.nome,
-      autor_cor:usuario.cor||C.azulMedio,
-      conteudo:msg, mencoes, created_at:new Date().toISOString(),
-    };
-    setMensagens(prev=>[...prev,tempMsg]);
-    try {
-      const salva = await chat.enviarMensagem(canalAtivo.id, usuario.id, usuario.nome,
-        usuario.cor||C.azulMedio, msg, mencoes);
-      // Substituir temp pela real
-      setMensagens(prev=>prev.map(m=>m.id===tempId?salva:m));
-    } catch(e){
-      console.error("Erro enviar:",e);
-      setMensagens(prev=>prev.filter(m=>m.id!==tempId));
-    }
   };
 
-  // ── Iniciar DM ───────────────────────────────────────────────────────────
-  const iniciarDM = async(outro)=>{
-    try{
-      const canal = await chat.obterOuCriarDM(usuario.id,outro.id,usuario.nome,outro.nome);
-      setCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
-      setCanalAtivo(canal); canalAtivoRef.current=canal;
-      setMostrarDM(false);
-      // DM novo — o sistema global vai assinar automaticamente na próxima vez que abrir
-    }catch(e){console.error(e);}
+  const iniciarDM = async(outro) => {
+    await onIniciarDM(outro);
+    setMostrarDM(false);
   };
 
-  // ── Deletar DM ───────────────────────────────────────────────────────────
-  const deletarDM = async(canalId)=>{
-    try{
-      await chat.excluirCanal(canalId);
-      if(assinaturasRef.current[canalId]){
-        chat.desassinarCanal(assinaturasRef.current[canalId]);
-        delete assinaturasRef.current[canalId];
-      }
-      const novaLista = canais.filter(c=>c.id!==canalId);
-      setCanais(novaLista);
-      if(canalAtivo?.id===canalId){
-        const prox = novaLista.find(c=>c.tipo==="canal");
-        setCanalAtivo(prox||null); canalAtivoRef.current=prox||null;
-      }
-      setConfirmDelDM(null);
-    }catch(e){console.error(e);}
+  const deletarDM = async(canalId) => {
+    await onDeletarDM(canalId);
+    setConfirmDelDM(null);
   };
 
-  // ── Criar canal ──────────────────────────────────────────────────────────
-  const criarCanalNovo = async()=>{
+  const criarCanalNovo = async() => {
     if(!novoCanal.nome.trim()) return;
-    try{
-      const c = await chat.criarCanal(novoCanal.nome,novoCanal.descricao,novoCanal.icone,"canal",usuario.id);
-      setCanais(prev=>[...prev,c]);
-      setCriando(false); setNovoCanal({nome:"",descricao:"",icone:"💬"});
-      setCanalAtivo(c); canalAtivoRef.current=c;
-    }catch(e){console.error(e);}
+    await onCriarCanal(novoCanal);
+    setCriando(false);
+    setNovoCanal({nome:"",descricao:"",icone:"💬"});
   };
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -3991,19 +3893,15 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
       return <span key={i}>{p}</span>;
     });
   };
-  const totalNaoLidos = Object.values(naoLidos).reduce((a,b)=>a+b,0);
-  // Comunicar badge ao ChatFlutuante
-  useEffect(()=>{ onNaoLidos?.(totalNaoLidos); },[totalNaoLidos]);
-
   return(
-    <div style={{display:"flex",height:flutuante?480:620,background:C.branco,borderRadius:flutuante?14:12,overflow:"hidden",border:`1px solid ${C.cinzaCard}`,boxShadow:flutuante?"0 8px 32px rgba(0,0,0,0.2)":"none",position:"relative"}}>
+    <div style={{display:"flex",height:480,background:C.branco,borderRadius:14,overflow:"hidden",border:`1px solid ${C.cinzaCard}`,boxShadow:"0 8px 32px rgba(0,0,0,0.2)",position:"relative"}}>
 
       {/* ── SIDEBAR ── */}
       <div style={{width:220,background:C.azulEscuro,display:"flex",flexDirection:"column",flexShrink:0}}>
         <div style={{padding:"14px 12px 10px",borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{color:C.branco,fontWeight:800,fontSize:14}}>💬 Chat INTEC</span>
-            {flutuante&&<button onClick={onFechar} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:16,padding:0}}>✕</button>}
+            <button onClick={onFechar} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",cursor:"pointer",fontSize:16,padding:0}}>✕</button>
           </div>
           <div style={{color:C.ciano,fontSize:10,marginTop:3}}>● {usuario?.nome}</div>
         </div>
@@ -4015,7 +3913,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
             const nl=naoLidos[c.id]||0;
             const ativo=canalAtivo?.id===c.id;
             return(
-              <div key={c.id} onClick={()=>{setCanalAtivo(c);canalAtivoRef.current=c;}}
+              <div key={c.id} onClick={()=>onSelecionarCanal(c)}
                 style={{padding:"7px 12px",cursor:"pointer",borderRadius:6,margin:"1px 6px",
                   background:ativo?"rgba(255,255,255,0.15)":"transparent",
                   display:"flex",alignItems:"center",gap:8}}
@@ -4023,8 +3921,8 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
                 onMouseLeave={e=>{if(!ativo)e.currentTarget.style.background="transparent";}}>
                 <span style={{fontSize:14}}>{c.icone}</span>
                 <span style={{color:ativo?C.branco:"rgba(255,255,255,0.7)",fontSize:13,fontWeight:ativo||nl>0?700:400,flex:1}}># {c.nome}</span>
-                {nl>0&&<span style={{background:C.vermelho,color:"#fff",borderRadius:10,fontSize:10,fontWeight:800,padding:"1px 5px",minWidth:18,textAlign:"center"}}>{nl}</span>}
-                {isGestor&&<button onClick={e=>{e.stopPropagation();if(window.confirm(`Excluir canal #${c.nome}?`))chat.excluirCanal(c.id).then(()=>{setCanais(p=>p.filter(x=>x.id!==c.id));if(canalAtivo?.id===c.id)setCanalAtivo(null);}).catch(()=>{});}}
+                {nl>0&&<span style={{background:C.vermelho,color:"#fff",borderRadius:10,fontSize:10,fontWeight:800,padding:"1px 5px",minWidth:18,textAlign:"center"}}>{nl>99?"99+":nl}</span>}
+                {isGestor&&<button onClick={e=>{e.stopPropagation();if(window.confirm(`Excluir canal #${c.nome}?`))onDeletarDM(c.id);}}
                   style={{background:"none",border:"none",color:"rgba(255,255,255,0.3)",cursor:"pointer",fontSize:12,padding:0,opacity:0,transition:"opacity 0.1s"}}
                   onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0}>🗑</button>}
               </div>
@@ -4042,7 +3940,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
               <div key={c.id} style={{padding:"6px 12px",display:"flex",alignItems:"center",gap:8,
                 background:ativo?"rgba(255,255,255,0.15)":"transparent",
                 borderRadius:6,margin:"1px 6px",cursor:"pointer",position:"relative"}}
-                onClick={()=>{setCanalAtivo(c);canalAtivoRef.current=c;}}
+                onClick={()=>onSelecionarCanal(c)}
                 onMouseEnter={e=>{if(!ativo)e.currentTarget.style.background="rgba(255,255,255,0.07)";}}
                 onMouseLeave={e=>{if(!ativo)e.currentTarget.style.background=ativo?"rgba(255,255,255,0.15)":"transparent";}}>
                 <div style={{width:26,height:26,borderRadius:"50%",background:outroU?.cor||"#8492a6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0}}>
@@ -4267,38 +4165,31 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
 }
 
 
-function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, temMencao=false, onAbrir, onRegisterCallback }) {
-  const [aberto,   setAberto]  = useState(false);
-  const [pulsando, setPulsando]= useState(false);
-
-  // Badge = global (do App) quando fechado, zero quando aberto
-  const badge = aberto ? 0 : naoLidosGlobal;
-
-  useEffect(()=>{
-    if(naoLidosGlobal > 0 && !aberto){
-      setPulsando(true);
-      setTimeout(()=>setPulsando(false), 800);
-    }
-  },[naoLidosGlobal]);
-
-  const abrir = () => {
-    setAberto(a=>{
-      if(!a) onAbrir?.(); // zerar badge global
-      return !a;
-    });
-  };
+function ChatFlutuante({ usuario, usuarios, aberto, onToggle, pulsando, temMencao, naoLidos,
+  canais, canalAtivo, mensagens,
+  onSelecionarCanal, onEnviar, onIniciarDM, onCriarCanal, onDeletarDM,
+}) {
+  const totalNaoLidos = Object.values(naoLidos).reduce((a,b)=>a+b,0);
+  const badge = aberto ? 0 : totalNaoLidos;
+  const isGestor = ["admin","gestor"].includes(usuario?.perfil);
 
   return (
     <div style={{position:"fixed",bottom:24,right:24,zIndex:1500}}>
       {aberto&&(
-        <div style={{position:"absolute",bottom:68,right:0,width:700,maxWidth:"96vw"}}>
-          <Chat usuario={usuario} usuarios={usuarios} flutuante
-            onFechar={()=>setAberto(false)}
-            onNaoLidos={()=>{}}
-            onRegisterCallback={onRegisterCallback}/>
+        <div style={{position:"absolute",bottom:68,right:0,width:720,maxWidth:"96vw"}}>
+          <Chat
+            usuario={usuario} usuarios={usuarios}
+            canais={canais} canalAtivo={canalAtivo} mensagens={mensagens} naoLidos={naoLidos}
+            onSelecionarCanal={onSelecionarCanal}
+            onEnviar={onEnviar}
+            onIniciarDM={onIniciarDM}
+            onCriarCanal={onCriarCanal}
+            onDeletarDM={onDeletarDM}
+            onFechar={onToggle}
+          />
         </div>
       )}
-      <button onClick={abrir}
+      <button onClick={onToggle}
         style={{width:54,height:54,borderRadius:"50%",
           background:aberto?C.azulEscuro:`linear-gradient(135deg,${C.azulMedio},${C.ciano})`,
           border:"none",cursor:"pointer",
@@ -4321,15 +4212,8 @@ function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, temMencao=false, o
         )}
       </button>
       <style>{`
-        @keyframes chatPulse {
-          0%,100%{transform:scale(1)}
-          50%{transform:scale(1.12)}
-        }
-        @keyframes badgePop {
-          0%{transform:scale(0)}
-          70%{transform:scale(1.2)}
-          100%{transform:scale(1)}
-        }
+        @keyframes chatPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
+        @keyframes badgePop  { 0%{transform:scale(0)} 70%{transform:scale(1.2)} 100%{transform:scale(1)} }
       `}</style>
     </div>
   );
@@ -4377,61 +4261,123 @@ export default function App(){
   const userRef       = useRef(null);
   const chatSubsRef     = useRef({});   // assinaturas de mensagens por canal {canalId: sub}
   const chatMembrosSub  = useRef(null); // assinatura de novos canais/DMs
-  const chatCallbackRef = useRef(null); // callback do Chat aberto (para msgs em tempo real)
-  const chatNaoLidosRef = useRef({});   // {canalId: count} — persiste entre remontagens
-  const [chatNaoLidos, setChatNaoLidos] = useState(0);
-  const [chatMencao,   setChatMencao]   = useState(false);
+  const canalAtivoRef   = useRef(null); // ref para evitar stale closure
+  const [chatCanais,       setChatCanais]     = useState([]);
+  const [chatCanalAtivo,   setChatCanalAtivo] = useState(null);
+  const [chatMensagens,    setChatMensagens]  = useState([]);
+  const [chatNaoLidos,     setChatNaoLidos]   = useState({});  // {canalId: count}
+  const [chatMencao,       setChatMencao]     = useState(false);
+  const [chatAberto,       setChatAberto]     = useState(false);
+  const [chatPulsando,     setChatPulsando]   = useState(false);
+  const chatAbertoRef = useRef(false);
+  useEffect(()=>{ chatAbertoRef.current = chatAberto; },[chatAberto]);
 
-  // Helper: incrementar naoLidos de um canal e recalcular total
-  const incrementarNaoLidos = useCallback((canalId) => {
-    chatNaoLidosRef.current[canalId] = (chatNaoLidosRef.current[canalId] || 0) + 1;
-    const total = Object.values(chatNaoLidosRef.current).reduce((a,b)=>a+b,0);
-    setChatNaoLidos(total);
-    // Repassar mapa atualizado ao Chat aberto
-    if(chatCallbackRef.current?.atualizarNaoLidos) {
-      chatCallbackRef.current.atualizarNaoLidos({...chatNaoLidosRef.current});
-    }
-  }, []);
+  // ── Helper: selecionar canal — carrega mensagens + zera badge ───────────
+  const chatSelecionarCanal = useCallback(async (canal) => {
+    setChatCanalAtivo(canal);
+    canalAtivoRef.current = canal;
+    setChatMensagens([]);
+    try {
+      const msgs = await chat.listarMensagens(canal.id, 100);
+      setChatMensagens(msgs);
+    } catch(e){ console.error(e); }
+    // Zerar badge deste canal
+    setChatNaoLidos(prev=>{
+      const novo = {...prev};
+      delete novo[canal.id];
+      const total = Object.values(novo).reduce((a,b)=>a+b,0);
+      if(total===0) setChatMencao(false);
+      return novo;
+    });
+    if(user) chat.marcarLido(canal.id, user.id).catch(()=>{});
+  }, [user?.id]);
 
-  // Helper: zerar naoLidos de um canal específico
-  const zerarNaoLidos = useCallback((canalId) => {
-    delete chatNaoLidosRef.current[canalId];
-    const total = Object.values(chatNaoLidosRef.current).reduce((a,b)=>a+b,0);
-    setChatNaoLidos(total);
-    if(total === 0) setChatMencao(false);
-    if(chatCallbackRef.current?.atualizarNaoLidos) {
-      chatCallbackRef.current.atualizarNaoLidos({...chatNaoLidosRef.current});
-    }
-  }, []);
-
-  // Helper: assinar um canal de mensagens (reutilizável para novos DMs também)
+  // ── Helper: assinar canal (reutilizável para novos DMs) ─────────────────
   const assinarCanalGlobal = useCallback((c) => {
-    if(chatSubsRef.current[c.id]) return; // já assinado
+    if(chatSubsRef.current[c.id]) return;
     const sub = chat.assinarCanal(c.id, (msg) => {
-      // Repassar para o Chat aberto (componente decide: exibir ou incrementar badge)
-      if(chatCallbackRef.current?.mensagem) {
-        chatCallbackRef.current.mensagem(c.id, msg);
+      const canalAberto = canalAtivoRef.current?.id === c.id && chatAbertoRef.current;
+      if(canalAberto) {
+        // Está visualizando — adiciona na lista sem badge
+        setChatMensagens(prev=>{
+          if(prev.find(m=>m.id===msg.id)) return prev;
+          return [...prev, msg];
+        });
+        if(user) chat.marcarLido(c.id, user.id).catch(()=>{});
+      } else {
+        // Canal não ativo ou chat fechado — incrementa badge
+        if(msg.autor_id !== userRef.current?.id) {
+          setChatNaoLidos(prev=>({...prev,[c.id]:(prev[c.id]||0)+1}));
+        }
       }
-      if(msg.autor_id === userRef.current?.id) return; // não notifica próprias msgs
+      if(msg.autor_id === userRef.current?.id) return;
       tocarSomChat();
       const eMencao = (msg.mencoes||[]).includes(userRef.current?.id);
-      incrementarNaoLidos(c.id);
-      if(eMencao) setChatMencao(true);
-      piscarTitulo(eMencao
-        ? `🔔 ${msg.autor_nome} mencionou você!`
-        : `💬 ${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
-      const cNome = c.tipo==="direto"
-        ? (c.nome||"").split("↔").find(n=>n.trim()!==userRef.current?.nome)?.trim()||"Mensagem"
-        : "# "+c.nome;
-      if(eMencao){
-        setTimeout(tocarSomChat, 200);
-        notificarSistema(`🔔 ${msg.autor_nome} mencionou você em ${cNome}!`, msg.conteudo.slice(0,80), "intec-mencao-global", 12000);
-      } else {
-        notificarSistema(`💬 ${msg.autor_nome} — ${cNome}`, msg.conteudo.slice(0,80), "intec-chat-global-"+c.id, 8000);
+      if(eMencao){ setChatMencao(true); setTimeout(tocarSomChat, 200); }
+      piscarTitulo(eMencao?`🔔 ${msg.autor_nome} mencionou você!`:`💬 ${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
+      const cNome = c.tipo==="direto"?(c.nome||"").split("↔").find(n=>n.trim()!==userRef.current?.nome)?.trim()||"Mensagem":"# "+c.nome;
+      notificarSistema(
+        eMencao?`🔔 ${msg.autor_nome} mencionou você em ${cNome}!`:`💬 ${msg.autor_nome} — ${cNome}`,
+        msg.conteudo.slice(0,80), "intec-chat-"+c.id, eMencao?12000:8000
+      );
+      if(!chatAbertoRef.current){
+        setChatPulsando(true);
+        setTimeout(()=>setChatPulsando(false), 800);
       }
     });
     chatSubsRef.current[c.id] = sub;
-  }, [incrementarNaoLidos]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Helper: enviar mensagem (optimistic) ─────────────────────────────────
+  const chatEnviar = useCallback(async (canalId, texto, mencoes) => {
+    const tempId = "temp-"+Date.now();
+    const tempMsg = {
+      id:tempId, canal_id:canalId,
+      autor_id:userRef.current?.id, autor_nome:userRef.current?.nome,
+      autor_cor:userRef.current?.cor||C.azulMedio,
+      conteudo:texto, mencoes, created_at:new Date().toISOString(),
+    };
+    setChatMensagens(prev=>[...prev,tempMsg]);
+    try {
+      const salva = await chat.enviarMensagem(canalId, userRef.current.id, userRef.current.nome, userRef.current.cor||C.azulMedio, texto, mencoes);
+      setChatMensagens(prev=>prev.map(m=>m.id===tempId?salva:m));
+    } catch(e){
+      setChatMensagens(prev=>prev.filter(m=>m.id!==tempId));
+    }
+  }, []);
+
+  // ── Helper: iniciar DM ────────────────────────────────────────────────────
+  const chatIniciarDM = useCallback(async (outro) => {
+    const canal = await chat.obterOuCriarDM(user.id,outro.id,user.nome,outro.nome);
+    setChatCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
+    assinarCanalGlobal(canal);
+    chatSelecionarCanal(canal);
+  }, [user?.id, assinarCanalGlobal, chatSelecionarCanal]);
+
+  // ── Helper: criar canal ───────────────────────────────────────────────────
+  const chatCriarCanal = useCallback(async ({nome,descricao,icone}) => {
+    const c = await chat.criarCanal(nome,descricao,icone,"canal",user?.id);
+    setChatCanais(prev=>[...prev,c]);
+    assinarCanalGlobal(c);
+    chatSelecionarCanal(c);
+  }, [user?.id, assinarCanalGlobal, chatSelecionarCanal]);
+
+  // ── Helper: deletar canal/DM ──────────────────────────────────────────────
+  const chatDeletar = useCallback(async (canalId) => {
+    await chat.excluirCanal(canalId).catch(()=>{});
+    if(chatSubsRef.current[canalId]){ chat.desassinarCanal(chatSubsRef.current[canalId]); delete chatSubsRef.current[canalId]; }
+    setChatCanais(prev=>{
+      const nova = prev.filter(c=>c.id!==canalId);
+      if(canalAtivoRef.current?.id===canalId){
+        const prox = nova.find(c=>c.tipo==="canal")||null;
+        setChatCanalAtivo(prox); canalAtivoRef.current=prox;
+        if(prox) chatSelecionarCanal(prox);
+      }
+      return nova;
+    });
+    setChatNaoLidos(prev=>{ const n={...prev}; delete n[canalId]; return n; });
+  }, [chatSelecionarCanal]);
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
   useEffect(() => {
@@ -4440,38 +4386,45 @@ export default function App(){
   useEffect(() => { projetosRef.current  = projetos;   }, [projetos]);
   useEffect(() => { userRef.current = user; }, [user]);
 
-  // ── Chat global: assinaturas sempre ativas mesmo fora da aba Chat ────────
+  // ── Chat global: carrega canais + assinaturas sempre ativas ─────────────
   useEffect(()=>{
     if(!user) return;
-    const iniciarChatGlobal = async () => {
+    let cancelado = false;
+    const init = async () => {
       try {
-        const canaisAtuais = await chat.listarCanais(user.id);
-        canaisAtuais.forEach(c => assinarCanalGlobal(c));
-      } catch(e){ console.warn("Chat global:", e); }
+        const lista = await chat.listarCanais(user.id);
+        if(cancelado) return;
+        setChatCanais(lista);
+        lista.forEach(c => assinarCanalGlobal(c));
+        // Abrir no primeiro canal público
+        const primeiro = lista.find(c=>c.tipo==="canal");
+        if(primeiro && !canalAtivoRef.current) {
+          chatSelecionarCanal(primeiro);
+        }
+      } catch(e){ console.warn("Chat init:", e); }
     };
-    iniciarChatGlobal();
+    init();
 
-    // Escuta quando o usuário é adicionado a um novo canal/DM em tempo real
+    // Escuta quando o usuário é adicionado a um novo canal/DM
     const subMembros = chat.assinarMembros(user.id, (novoCanal) => {
-      // Notificar o componente Chat aberto para adicionar o canal na lista
-      if(chatCallbackRef.current?.novoCanal) {
-        chatCallbackRef.current.novoCanal(novoCanal);
-      }
-      // Registrar assinatura de mensagens para esse novo canal
+      if(cancelado) return;
+      setChatCanais(prev=>prev.find(c=>c.id===novoCanal.id)?prev:[...prev,novoCanal]);
       assinarCanalGlobal(novoCanal);
-      // Notificação visual
+      // Badge imediato para DM novo
+      setChatNaoLidos(prev=>({...prev,[novoCanal.id]:1}));
+      setChatPulsando(true); setTimeout(()=>setChatPulsando(false),800);
       const quem = (novoCanal.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"alguém";
-      notificarSistema(`💬 ${quem} iniciou uma conversa com você`, "Clique no Chat para responder", "intec-dm-novo", 10000);
+      notificarSistema(`💬 ${quem} iniciou uma conversa com você`,"Clique no Chat para responder","intec-dm-novo",10000);
     });
     chatMembrosSub.current = subMembros;
 
     return ()=>{
+      cancelado = true;
       Object.values(chatSubsRef.current).forEach(s=>{ try{ chat.desassinarCanal(s); }catch(e){} });
       chatSubsRef.current = {};
-      if(chatMembrosSub.current) { try{ chat.desassinarCanal(chatMembrosSub.current); }catch(e){} }
-      chatMembrosSub.current = null;
+      if(chatMembrosSub.current){ try{ chat.desassinarCanal(chatMembrosSub.current); }catch(e){} chatMembrosSub.current=null; }
     };
-  },[user?.id, assinarCanalGlobal]);
+  },[user?.id, assinarCanalGlobal, chatSelecionarCanal]);
 
   // ── Carregar dados do Supabase ao iniciar ──
   useEffect(() => {
@@ -4959,7 +4912,6 @@ export default function App(){
     ...(!isColab ? [{id:"financeiro", label:"Financeiro", icone:"💰", grupo:"principal"}] : []),
     {id:"horas",        label:"Horas & Produtividade", icone:"⏱", grupo:"horas"},
     {id:"agenda",       label:"Agenda & Escalas",  icone:"📅", grupo:"agenda"},
-    {id:"chat",         label:"Chat",              icone:"💬", grupo:"principal"},
     {id:"config",       label:"Configurações",     icone:"⚙",  grupo:"config"},
   ];
 
@@ -5091,9 +5043,6 @@ export default function App(){
         {aba==="financeiro"&&<Financeiro projetos={projetos}/>}
         {aba==="horas"     &&<AbaHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
         {aba==="agenda"    &&<AbaAgenda calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
-        {aba==="chat"      &&<div style={{height:"calc(100vh - 140px)"}}><Chat usuario={user} usuarios={usuarios}
-          onNaoLidos={n=>setChatNaoLidos(n)}
-          onRegisterCallback={handlers=>{ chatCallbackRef.current = handlers||null; }}/></div>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
       </main>
 
@@ -5103,27 +5052,30 @@ export default function App(){
   if(acao==="encerrar") {
     encerrar(new Date().toTimeString().slice(0,5),"Encerrado pelo colaborador");
   } else if(acao==="continuar_extra") {
-    // Bug 2: continuar após expediente = encerra sessão atual e abre nova como hora extra
     const agora = new Date().toTimeString().slice(0,5);
     const sessaoAtual = registrosRef.current.find(r=>r.usuarioId===user.id&&!r.horaFim);
     if(sessaoAtual){
       encerrar(agora, "Encerrado no fim do expediente — continuou em hora extra");
-      setTimeout(()=>{
-        // Abrir nova sessão como hora extra com mesmo projeto
-        iniciar(sessaoAtual.projetoId, agora, sessaoAtual.obsInicio||"", sessaoAtual.categoriaAdmin);
-      }, 500);
+      setTimeout(()=>{ iniciar(sessaoAtual.projetoId, agora, sessaoAtual.obsInicio||"", sessaoAtual.categoriaAdmin); }, 500);
     }
     setModalH(null);
   } else {
-    // Confirmou que ainda está trabalhando — salvar timestamp
     localStorage.setItem(`intec_aviso_respondido_${user.id}`, Date.now().toString());
     setModalH(null);
   }
 }}/>}
-      <ChatFlutuante usuario={user} usuarios={usuarios}
-        naoLidosGlobal={chatNaoLidos} temMencao={chatMencao}
-        onAbrir={()=>{/* não zera — badges somem canal a canal quando lido */}}
-        onRegisterCallback={handlers=>{ chatCallbackRef.current = handlers||null; }}/>
+
+      <ChatFlutuante
+        usuario={user} usuarios={usuarios}
+        aberto={chatAberto} onToggle={()=>setChatAberto(a=>!a)}
+        pulsando={chatPulsando} temMencao={chatMencao} naoLidos={chatNaoLidos}
+        canais={chatCanais} canalAtivo={chatCanalAtivo} mensagens={chatMensagens}
+        onSelecionarCanal={chatSelecionarCanal}
+        onEnviar={chatEnviar}
+        onIniciarDM={chatIniciarDM}
+        onCriarCanal={chatCriarCanal}
+        onDeletarDM={chatDeletar}
+      />
     </div>
   );
 }
