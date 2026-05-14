@@ -4260,7 +4260,8 @@ export default function App(){
   const projetosRef   = useRef([]);
   const userRef       = useRef(null);
   const chatSubsRef     = useRef({});   // assinaturas de mensagens por canal {canalId: sub}
-  const chatMembrosSub  = useRef(null); // assinatura de novos canais/DMs
+  const chatMembrosSub      = useRef(null); // assinatura de novos DMs
+  const chatCanaisPublicosSub = useRef(null); // assinatura de novos canais públicos
   const canalAtivoRef   = useRef(null); // ref para evitar stale closure
   const [chatCanais,       setChatCanais]     = useState([]);
   const [chatCanalAtivo,   setChatCanalAtivo] = useState(null);
@@ -4405,12 +4406,13 @@ export default function App(){
     };
     init();
 
-    // Escuta quando o usuário é adicionado a um novo canal/DM
+    // Escuta quando o usuário é adicionado a um novo DM
     const subMembros = chat.assinarMembros(user.id, (novoCanal) => {
       if(cancelado) return;
+      // Não duplicar canal que o próprio usuário criou (chatIniciarDM já adicionou)
       setChatCanais(prev=>prev.find(c=>c.id===novoCanal.id)?prev:[...prev,novoCanal]);
       assinarCanalGlobal(novoCanal);
-      // Badge imediato para DM novo
+      // Badge + notificação só para quem RECEBEU o DM (não quem criou)
       setChatNaoLidos(prev=>({...prev,[novoCanal.id]:1}));
       setChatPulsando(true); setTimeout(()=>setChatPulsando(false),800);
       const quem = (novoCanal.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"alguém";
@@ -4418,11 +4420,26 @@ export default function App(){
     });
     chatMembrosSub.current = subMembros;
 
+    // Escuta criação de canais públicos por qualquer usuário
+    const subCanaisPublicos = chat.assinarCanaisPublicos((novoCanal) => {
+      if(cancelado) return;
+      // Adicionar canal na lista se ainda não existir
+      setChatCanais(prev=>{
+        if(prev.find(c=>c.id===novoCanal.id)) return prev;
+        return [...prev, novoCanal];
+      });
+      // Assinar mensagens desse novo canal
+      assinarCanalGlobal(novoCanal);
+      // Não fazer badge — canal novo não tem mensagens ainda
+    });
+    chatCanaisPublicosSub.current = subCanaisPublicos;
+
     return ()=>{
       cancelado = true;
       Object.values(chatSubsRef.current).forEach(s=>{ try{ chat.desassinarCanal(s); }catch(e){} });
       chatSubsRef.current = {};
       if(chatMembrosSub.current){ try{ chat.desassinarCanal(chatMembrosSub.current); }catch(e){} chatMembrosSub.current=null; }
+      if(chatCanaisPublicosSub.current){ try{ chat.desassinarCanal(chatCanaisPublicosSub.current); }catch(e){} chatCanaisPublicosSub.current=null; }
     };
   },[user?.id, assinarCanalGlobal, chatSelecionarCanal]);
 

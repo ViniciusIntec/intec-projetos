@@ -587,17 +587,31 @@ export const chat = {
   assinarMembros(userId, onNovoCanal) {
     const nome = `chat-membros-${userId}-${Date.now()}`;
     const sub = supabase.channel(nome);
+    // Caso 1: DM — o usuário foi adicionado como membro de um canal direto
     sub.on('postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'chat_membros', filter: `usuario_id=eq.${userId}` },
       async payload => {
         if(!payload.new?.canal_id) return;
-        // Buscar detalhes do canal recém-criado
         const { data } = await supabase
           .from('chat_canais')
           .select('*')
           .eq('id', payload.new.canal_id)
           .single();
         if(data) onNovoCanal(data);
+      }
+    );
+    sub.subscribe();
+    return sub;
+  },
+
+  // Escuta criação de canais públicos (tipo='canal') — sem filtro de usuário
+  assinarCanaisPublicos(onNovoCanal) {
+    const nome = `chat-canais-publicos-${Date.now()}`;
+    const sub = supabase.channel(nome);
+    sub.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_canais', filter: `tipo=eq.canal` },
+      payload => {
+        if(payload.new) onNovoCanal(payload.new);
       }
     );
     sub.subscribe();
