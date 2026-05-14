@@ -443,14 +443,34 @@ export const portal = {
 // ─── CHAT ──────────────────────────────────────────────────────────────────────
 export const chat = {
 
-  async listarCanais() {
-    const { data, error } = await supabase
+  async listarCanais(userId) {
+    // Canais públicos
+    const { data: canaisPublicos } = await supabase
       .from('chat_canais')
       .select('*')
       .eq('ativo', true)
+      .eq('tipo', 'canal')
       .order('created_at');
-    if (error) throw error;
-    return data || [];
+
+    // DMs onde o usuário é membro
+    let dms = [];
+    if (userId) {
+      const { data: membros } = await supabase
+        .from('chat_membros')
+        .select('canal_id')
+        .eq('usuario_id', userId);
+      if (membros && membros.length > 0) {
+        const ids = membros.map(m => m.canal_id);
+        const { data: canalDMs } = await supabase
+          .from('chat_canais')
+          .select('*')
+          .in('id', ids)
+          .eq('tipo', 'direto')
+          .eq('ativo', true);
+        dms = canalDMs || [];
+      }
+    }
+    return [...(canaisPublicos||[]), ...dms];
   },
 
   async criarCanal(nome, descricao, icone, tipo='canal', criadoPor=null) {
