@@ -12,6 +12,14 @@ function pedirPermissaoNotificacao() {
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission();
   }
+  // Desbloquear AudioContext no primeiro clique (política dos browsers modernos)
+  const desbloquearAudio = () => {
+    if (_audioCtx && _audioCtx.state === 'suspended') {
+      _audioCtx.resume().catch(()=>{});
+    }
+    document.removeEventListener('click', desbloquearAudio);
+  };
+  document.addEventListener('click', desbloquearAudio);
 }
 
 // Disparar notificação nativa do sistema operacional
@@ -31,21 +39,55 @@ function notificarSistema(titulo, corpo, tag="intec-geral", duracaoMs=10000) {
   } catch(e) { console.warn("Notificação:", e); }
 }
 
-// Som de notificação do chat (Web Audio API — sem arquivo externo)
+// Som de notificação do chat
+let _audioCtx = null;
 function tocarSomChat() {
   try {
-    const ctx = new (window.AudioContext||window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain= ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1100, ctx.currentTime+0.08);
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.3);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime+0.3);
-    ctx.close();
-  } catch(e){}
+    // Reusar contexto existente ou criar novo
+    if (!_audioCtx || _audioCtx.state === 'closed') {
+      _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    }
+    const ctx = _audioCtx;
+    // Retomar se suspenso (política do browser)
+    const play = () => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime+0.1);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.25, ctx.currentTime+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime+0.4);
+    };
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(play).catch(()=>{});
+    } else {
+      play();
+    }
+  } catch(e){ console.warn('Som chat:', e); }
+}
+
+// Piscar título da aba quando chegar mensagem
+let _titleFlash = null;
+let _tituloOriginal = document.title;
+function piscarTitulo(msg) {
+  if (_titleFlash) return; // já piscando
+  let show = true;
+  _titleFlash = setInterval(() => {
+    document.title = show ? `💬 ${msg}` : _tituloOriginal;
+    show = !show;
+  }, 1000);
+  // Para de piscar quando o usuário volta para a aba
+  const parar = () => {
+    clearInterval(_titleFlash); _titleFlash = null;
+    document.title = _tituloOriginal;
+    window.removeEventListener('focus', parar);
+  };
+  window.addEventListener('focus', parar);
+  setTimeout(parar, 30000); // para sozinho após 30s
 }
 
 // Controle de notificações já enviadas (evitar repetir na mesma sessão)
@@ -3806,6 +3848,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
           // Som + notificação para mensagens de outros
           if(msg.autor_id!==usuario.id){
             tocarSomChat();
+            piscarTitulo(`${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
             const cNome = c.tipo==="direto"
               ? (c.nome||"").split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||c.nome||"Direto"
               : "# "+c.nome;
