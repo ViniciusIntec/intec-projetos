@@ -4185,8 +4185,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
                   // Detectar @ para autocomplete
                   const cursor = e.target.selectionStart;
                   const atPos  = val.lastIndexOf("@", cursor-1);
-                  if(atPos>=0 && (atPos===0||val[atPos-1]===" "||val[atPos-1]==="
-")){
+                  if(atPos>=0 && (atPos===0||val[atPos-1]===" "||val[atPos-1]==="\n")){
                     const query = val.slice(atPos+1, cursor).toLowerCase();
                     const matches = usuarios.filter(u=>u.ativo&&u.id!==usuario?.id&&u.nome.toLowerCase().startsWith(query));
                     setSugestoes(matches.slice(0,5));
