@@ -2765,7 +2765,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
         </div>
         {/* Sub-abas do modal */}
         <div style={{display:"flex",gap:0,borderBottom:`2px solid ${C.cinzaCard}`}}>
-          {[{id:"info",label:"📋 Projeto"},{id:"execucao",label:"⚙ Execução"},{id:"financeiro",label:"💰 Financeiro"},{id:"portal",label:"🔗 Portal Cliente"}].map(t=>(
+          {[{id:"info",label:"📋 Projeto"},{id:"execucao",label:"🔍 Revisões"},{id:"financeiro",label:"💰 Financeiro"},{id:"portal",label:"🔗 Portal Cliente"}].map(t=>(
             <button key={t.id} onClick={()=>setAbaModal(t.id)} style={{background:"none",border:"none",padding:"12px 18px",cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:abaModal===t.id?700:500,color:abaModal===t.id?C.azulMedio:C.cinzaClaro,borderBottom:abaModal===t.id?`2px solid ${C.azulMedio}`:"2px solid transparent",marginBottom:-2,transition:"all 0.15s"}}>
               {t.label}
             </button>
@@ -2844,7 +2844,7 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               👥 Equipe & Responsabilidades
             </h3>
 
-            {/* Projetos CB: disciplinas com responsável embutido */}
+            {/* CB: disciplinas com responsável por disciplina */}
             {form.tipo==="CB" ? (
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{fontSize:12,color:C.cinzaClaro,marginBottom:4}}>
@@ -2946,44 +2946,56 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                 })()}
               </div>
             ) : (
-              /* Outros tipos: campos simples de responsável */
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Sel label="Responsável" value={form.responsavel} onChange={v=>s("responsavel",v)}
+              /* Outros tipos: responsável principal + equipe */
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <Sel label="Responsável Principal" value={form.responsavel} onChange={v=>s("responsavel",v)}
                   options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-                <Sel label="Co-responsável" value={form.coresponsavel} onChange={v=>s("coresponsavel",v)}
-                  options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-                <Sel label="Co-responsável 2" value={form.coresponsavel2||""} onChange={v=>s("coresponsavel2",v)}
-                  options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-                <Sel label="Co-responsável 3" value={form.coresponsavel3||""} onChange={v=>s("coresponsavel3",v)}
-                  options={[{value:"",label:"— Nenhum —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
+                {/* Equipe adicional — checkboxes */}
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Equipe (co-responsáveis)</label>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                    {usuarios.filter(u=>u.ativo&&u.nome!==form.responsavel).map(u=>{
+                      const jaEsta=[form.coresponsavel,form.coresponsavel2,form.coresponsavel3].includes(u.nome);
+                      return(
+                        <button key={u.id} onClick={()=>{
+                          const slots=["coresponsavel","coresponsavel2","coresponsavel3"];
+                          if(jaEsta){
+                            // remover
+                            const vals=[form.coresponsavel,form.coresponsavel2,form.coresponsavel3]
+                              .filter(v=>v&&v!==u.nome);
+                            s("coresponsavel",vals[0]||"");s("coresponsavel2",vals[1]||"");s("coresponsavel3",vals[2]||"");
+                          } else {
+                            const livre=slots.find(k=>!form[k]);
+                            if(livre)s(livre,u.nome);
+                          }
+                        }}
+                          style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,
+                            border:`2px solid ${jaEsta?C.azulMedio:C.cinzaCard}`,
+                            background:jaEsta?C.azulMedio+"15":"white",
+                            color:jaEsta?C.azulMedio:C.cinzaClaro,
+                            cursor:"pointer",fontSize:12,fontWeight:jaEsta?700:400,fontFamily:"inherit",
+                            transition:"all 0.15s"}}>
+                          <span style={{width:22,height:22,borderRadius:"50%",background:jaEsta?C.azulMedio:C.cinzaCard,
+                            display:"flex",alignItems:"center",justifyContent:"center",
+                            color:"white",fontSize:9,fontWeight:800,flexShrink:0}}>
+                            {u.nome.slice(0,2).toUpperCase()}
+                          </span>
+                          {u.nome}
+                          {jaEsta&&<span style={{fontSize:10}}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {[form.coresponsavel,form.coresponsavel2,form.coresponsavel3].filter(Boolean).length===0&&(
+                    <span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>Nenhum co-responsável adicionado</span>
+                  )}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Drive & Obs (permanece na aba Projeto) */}
-          <div>
-            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Observações</h3>
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <input value={form.driveEntregaveis||""} onChange={e=>s("driveEntregaveis",e.target.value)}
-                  placeholder="📦 Link Entregáveis (cliente vê ao 100%)..."
-                  style={{flex:1,border:`1.5px solid ${form.driveEntregaveis?C.verde:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontFamily:"inherit",color:C.cinzaEscuro}}/>
-                {form.driveEntregaveis&&<a href={form.driveEntregaveis} target="_blank" rel="noreferrer" style={{color:C.verde,fontSize:12,whiteSpace:"nowrap",fontWeight:700}}>📂 Testar</a>}
-              </div>
-              <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} placeholder="Observações..."
-                style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
-            {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
-            <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn></div>
-          </div>
-        </>}
 
-        {/* ─── ABA EXECUÇÃO: PAUSAS + REVISÃO ─── */}
-        {abaModal==="execucao" && <>
-
+          {/* ── PAUSAS DO PROJETO ── */}
           {/* Pausas do projeto */}
           <div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
@@ -3029,6 +3041,30 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               <div style={{padding:"8px 12px",background:"#fff7ed",borderRadius:8,fontSize:12,color:"#92400e",border:"1px solid #fde68a"}}>⏸ Projeto em pausa. Clique em "▶ Retornar" para registrar o retorno.</div>
             )}
           </div>
+
+          {/* Drive & Obs */}
+          <div>
+            <h3 style={{color:C.azulEscuro,fontSize:13,fontWeight:700,margin:"0 0 12px",textTransform:"uppercase",letterSpacing:1}}>🔗 Drive & Observações</h3>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {form._doDrive ? <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Link do Drive <span style={{fontSize:10,color:C.cinzaClaro}}>(gerenciado automaticamente)</span></label><div style={{display:"flex",gap:8,alignItems:"center"}}><input value={form.driveUrl} readOnly style={{flex:1,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,background:"#f8fafc",cursor:"not-allowed",color:C.cinzaClaro}}/>{form.driveUrl&&<a href={form.driveUrl} target="_blank" rel="noreferrer" style={{color:C.azulClaro,fontSize:12,whiteSpace:"nowrap"}}>📂 Abrir</a>}</div></div> : <Inp label="Link da pasta no Google Drive" value={form.driveUrl} onChange={v=>s("driveUrl",v)} placeholder="https://drive.google.com/..."/>}
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input value={form.driveEntregaveis||""} onChange={e=>s("driveEntregaveis",e.target.value)}
+                  placeholder="📦 Link Entregáveis (cliente vê ao 100%)..."
+                  style={{flex:1,border:`1.5px solid ${form.driveEntregaveis?C.verde:C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:12,fontFamily:"inherit",color:C.cinzaEscuro}}/>
+                {form.driveEntregaveis&&<a href={form.driveEntregaveis} target="_blank" rel="noreferrer" style={{color:C.verde,fontSize:12,whiteSpace:"nowrap",fontWeight:700}}>📂 Testar</a>}
+              </div>
+              <textarea value={form.obs} onChange={e=>s("obs",e.target.value)} rows={2} placeholder="Observações..."
+                style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,outline:"none",resize:"vertical",width:"100%",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
+            {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
+            <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn></div>
+          </div>
+        </>}
+
+        {/* ─── ABA EXECUÇÃO: PAUSAS + REVISÃO ─── */}
+        {abaModal==="execucao" && <>
 
           {/* Revisão do projeto */}
           <div>
@@ -3276,7 +3312,10 @@ function CardProjeto({p,onClick}){
         <Badge status={p.status}/>
       </div>
       <div style={{display:"flex",gap:12,fontSize:11,color:C.cinzaClaro,marginBottom:10,flexWrap:"wrap"}}>
-        {p.responsavel&&<span>👤 {p.responsavel}{p.coresponsavel&&` / ${p.coresponsavel}`}</span>}
+        {(()=>{
+                const eq=[p.responsavel,p.coresponsavel,p.coresponsavel2,p.coresponsavel3].filter(Boolean);
+                return eq.length>0?<span>👤 {eq.join(" / ")}</span>:null;
+              })()}
         {p.dataEntregaPrevista&&<span style={{color:dias!==null&&dias<0?C.vermelho:dias!==null&&dias<7?C.laranja:C.cinzaClaro}}>📅 {fmtData(p.dataEntregaPrevista)}{dias!==null&&` (${dias<0?`${Math.abs(dias)}d atrasado`:`${dias}d`})`}</span>}
         {p.driveUrl&&<a href={p.driveUrl} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:C.azulClaro,textDecoration:"none"}}>📂</a>}
       </div>
@@ -3440,7 +3479,7 @@ function TabelaProjetos({projetos,onAbrirProjeto}){
                   <td style={{padding:"10px 14px",fontWeight:600,color:C.azulMedio}}>{p.codigo}</td>
                   <td style={{padding:"10px 14px"}}><TipoBadge tipo={p.tipo}/></td>
                   <td style={{padding:"10px 14px",maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.cliente}</td>
-                  <td style={{padding:"10px 14px",color:C.cinzaClaro}}>{p.responsavel}{p.coresponsavel?` / ${p.coresponsavel}`:""}</td>
+                  <td style={{padding:"10px 14px",color:C.cinzaClaro}}>{[p.responsavel,p.coresponsavel,p.coresponsavel2,p.coresponsavel3].filter(Boolean).join(" / ")||"—"}</td>
                   <td style={{padding:"10px 14px"}}><Badge status={p.status}/></td>
                   <td style={{padding:"10px 14px",color:C.cinzaClaro,whiteSpace:"nowrap"}}>{fmtData(p.dataEntregaPrevista)}</td>
                   <td style={{padding:"10px 14px"}}>{total>0?<span style={{color:rec===total?C.verde:C.amarelo,fontWeight:600}}>{fmt(rec)}/{fmt(total)}</span>:<span style={{color:C.cinzaClaro}}>—</span>}</td>
@@ -3567,72 +3606,90 @@ function PainelAlertas({projetos, onAbrirProjeto}) {
 
 // ─── PAINEL DE ENTREGAS ────────────────────────────────────────────────────────
 function PainelEntregas({ projetos, onAbrirProjeto }) {
-  const [filtro, setFiltro] = useState("todos");
+  const [filtroStatus, setFiltroStatus] = useState("todos");
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const mesAtual = hoje.getMonth(); // 0-indexed
 
-  const comEntregaPrevista = projetos.filter(p => p.dataEntregaPrevista);
-  const comEntregaReal     = comEntregaPrevista.filter(p => p.dataEntregaReal);
-  const semEntregaReal     = comEntregaPrevista.filter(p => !p.dataEntregaReal && !["CONCLUÍDO","CANCELADO"].includes(statusN(p.status)));
+  // Gerar lista de meses disponíveis (últimos 12 + próximos 3)
+  const meses = [];
+  for(let i = -11; i <= 3; i++){
+    const d = new Date(anoAtual, mesAtual + i, 1);
+    meses.push({ value: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleDateString('pt-BR',{month:'long',year:'numeric'}) });
+  }
+  const mesAtualStr = `${anoAtual}-${String(mesAtual+1).padStart(2,'0')}`;
+  const [filtroMes, setFiltroMes] = useState(mesAtualStr);
 
-  // Projetos com entrega real preenchida — comparar com prevista
-  const noPrazo    = comEntregaReal.filter(p => p.dataEntregaReal <= p.dataEntregaPrevista);
-  const atrasados  = comEntregaReal.filter(p => p.dataEntregaReal >  p.dataEntregaPrevista);
-
-  // Projetos sem entrega real mas com prazo vencido
-  const vencidoSemEntrega = semEntregaReal.filter(p => {
-    const dias = Math.ceil((new Date(p.dataEntregaPrevista) - new Date()) / 86400000);
-    return dias < 0;
+  // Filtrar projetos pelo mês selecionado (por dataEntregaPrevista ou dataEntregaReal)
+  const projetosMes = projetos.filter(p => {
+    const ref = p.dataEntregaReal || p.dataEntregaPrevista;
+    if(!ref) return false;
+    return ref.slice(0,7) === filtroMes;
   });
+
+  // Agrupar por status
+  const porStatus = {
+    concluidos:  projetosMes.filter(p => ["CONCLUÍDO","Concluído"].includes(statusN(p.status))),
+    atrasados:   projetosMes.filter(p => statusN(p.status)==="ATRASADO"),
+    pausados:    projetosMes.filter(p => statusN(p.status)==="PAUSADO"),
+    andamento:   projetosMes.filter(p => statusN(p.status)==="Em andamento"),
+    novos:       projetosMes.filter(p => statusN(p.status)==="Novo/Definir"),
+    cancelados:  projetosMes.filter(p => statusN(p.status)==="CANCELADO"),
+  };
+
+  const comEntregaReal = projetosMes.filter(p => p.dataEntregaReal);
+  const noPrazo  = comEntregaReal.filter(p => p.dataEntregaReal <= p.dataEntregaPrevista);
+  const taxa = comEntregaReal.length > 0 ? Math.round((noPrazo.length / comEntregaReal.length) * 100) : null;
+
+  const resumos = [
+    { id:"todos",      label:"Todos",         valor:projetosMes.length,           cor:C.azulMedio },
+    { id:"concluidos", label:"✓ Concluídos",  valor:porStatus.concluidos.length,  cor:C.verde },
+    { id:"andamento",  label:"▶ Em Andamento",valor:porStatus.andamento.length,   cor:C.azulMedio },
+    { id:"atrasados",  label:"⚠ Atrasados",   valor:porStatus.atrasados.length,   cor:C.vermelho },
+    { id:"pausados",   label:"⏸ Pausados",    valor:porStatus.pausados.length,    cor:C.amarelo },
+    { id:"novos",      label:"○ Novo/Definir", valor:porStatus.novos.length,      cor:C.cinzaClaro },
+    { id:"cancelados", label:"✕ Cancelados",  valor:porStatus.cancelados.length,  cor:"#9333ea" },
+  ];
+
+  const listaFiltrada = filtroStatus==="todos" ? projetosMes : (porStatus[filtroStatus]||[]);
 
   const diasAtraso = (p) => {
     if (!p.dataEntregaReal || !p.dataEntregaPrevista) return 0;
     return Math.ceil((new Date(p.dataEntregaReal) - new Date(p.dataEntregaPrevista)) / 86400000);
   };
 
-  const filtros = [
-    { id:"todos",    label:"Todos",           valor:comEntregaPrevista.length, cor:C.azulMedio },
-    { id:"noPrazo",  label:"✓ No Prazo",      valor:noPrazo.length,           cor:C.verde     },
-    { id:"atrasado", label:"⚠ Atrasado",      valor:atrasados.length,         cor:C.vermelho  },
-    { id:"pendente", label:"⏳ Aguardando",   valor:semEntregaReal.length,    cor:C.amarelo   },
-    { id:"vencido",  label:"🔴 Vencido s/ registro", valor:vencidoSemEntrega.length, cor:"#9333ea" },
-  ];
-
-  const listaFiltrada = (() => {
-    switch(filtro) {
-      case "noPrazo":  return noPrazo;
-      case "atrasado": return atrasados;
-      case "pendente": return semEntregaReal;
-      case "vencido":  return vencidoSemEntrega;
-      default:         return comEntregaPrevista;
-    }
-  })();
-
-  // Taxa de entrega no prazo
-  const taxa = comEntregaReal.length > 0 ? Math.round((noPrazo.length / comEntregaReal.length) * 100) : null;
-
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {/* KPIs */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-        {filtros.map(f=>(
-          <div key={f.id} onClick={()=>setFiltro(f.id)}
-            style={{padding:"14px",borderRadius:10,background:filtro===f.id?f.cor:"white",border:`2px solid ${filtro===f.id?f.cor:C.cinzaCard}`,cursor:"pointer",textAlign:"center",transition:"all 0.2s",boxShadow:filtro===f.id?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
-            <div style={{fontSize:28,fontWeight:900,color:filtro===f.id?"white":f.cor,lineHeight:1}}>{f.valor}</div>
-            <div style={{fontSize:11,color:filtro===f.id?"rgba(255,255,255,0.85)":C.cinzaClaro,fontWeight:600,marginTop:4}}>{f.label}</div>
+      {/* Seletor de mês */}
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <label style={{fontSize:12,fontWeight:700,color:C.cinzaEscuro}}>📅 Período:</label>
+        <select value={filtroMes} onChange={e=>setFiltroMes(e.target.value)}
+          style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"6px 12px",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,cursor:"pointer",background:"white"}}>
+          {meses.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+        {taxa!==null&&<span style={{fontSize:12,fontWeight:700,color:taxa>=80?C.verde:taxa>=50?C.amarelo:C.vermelho,marginLeft:"auto"}}>
+          Taxa no prazo: {taxa}%
+        </span>}
+      </div>
+
+      {/* KPIs por status */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
+        {resumos.map(f=>(
+          <div key={f.id} onClick={()=>setFiltroStatus(f.id)}
+            style={{padding:"12px 14px",borderRadius:10,background:filtroStatus===f.id?f.cor:"white",
+              border:`2px solid ${filtroStatus===f.id?f.cor:C.cinzaCard}`,cursor:"pointer",textAlign:"center",
+              transition:"all 0.2s",boxShadow:filtroStatus===f.id?"0 4px 12px rgba(0,0,0,0.15)":"none"}}>
+            <div style={{fontSize:26,fontWeight:900,color:filtroStatus===f.id?"white":f.cor,lineHeight:1}}>{f.valor}</div>
+            <div style={{fontSize:10,color:filtroStatus===f.id?"rgba(255,255,255,0.85)":C.cinzaClaro,fontWeight:600,marginTop:4}}>{f.label}</div>
           </div>
         ))}
-        {taxa !== null && (
-          <div style={{padding:"14px",borderRadius:10,background:taxa>=80?C.verde:taxa>=50?C.amarelo:C.vermelho,textAlign:"center"}}>
-            <div style={{fontSize:28,fontWeight:900,color:"white",lineHeight:1}}>{taxa}%</div>
-            <div style={{fontSize:11,color:"rgba(255,255,255,0.85)",fontWeight:600,marginTop:4}}>Taxa no Prazo</div>
-          </div>
-        )}
       </div>
 
       {/* Tabela */}
       <Card style={{padding:0,overflow:"hidden"}}>
         <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.cinzaCard}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <h3 style={{color:C.azulEscuro,margin:0,fontSize:14,fontWeight:700}}>
-            📦 Registro de Entregas ({listaFiltrada.length})
+            📦 Projetos do período ({listaFiltrada.length})
           </h3>
         </div>
         <div style={{overflowX:"auto"}}>
@@ -3667,7 +3724,7 @@ function PainelEntregas({ projetos, onAbrirProjeto }) {
                     onMouseLeave={e=>e.currentTarget.style.background=i%2===0?C.branco:"#f8fafc"}>
                     <td style={{padding:"9px 14px",fontWeight:700,color:C.azulMedio}}>{p.codigo}</td>
                     <td style={{padding:"9px 14px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.cliente}</td>
-                    <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{p.responsavel||"—"}</td>
+                    <td style={{padding:"9px 14px",color:C.cinzaClaro}}>{[p.responsavel,p.coresponsavel,p.coresponsavel2,p.coresponsavel3].filter(Boolean).join(", ")||"—"}</td>
                     <td style={{padding:"9px 14px",color:C.cinzaClaro,whiteSpace:"nowrap"}}>{fmtData(p.dataEntregaPrevista)}</td>
                     <td style={{padding:"9px 14px",color:p.dataEntregaReal?C.cinzaEscuro:C.cinzaClaro,whiteSpace:"nowrap"}}>{p.dataEntregaReal?fmtData(p.dataEntregaReal):"—"}</td>
                     <td style={{padding:"9px 14px"}}>
