@@ -3805,11 +3805,14 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
   const [criandoCanal, setCriando]   = useState(false);
   const [novoCanal,    setNovoCanal] = useState({nome:"",descricao:"",icone:"💬"});
   const [naoLidos,     setNaoLidos]  = useState({});  // {canalId: count}
-  const [confirmDelDM, setConfirmDelDM] = useState(null); // id canal a deletar
+  const [confirmDelDM, setConfirmDelDM] = useState(null);
+  const [sugestoes,    setSugestoes]    = useState([]); // autocomplete @
+  const [sugestaoIdx,  setSugestaoIdx]  = useState(0);
+  const [mencaoBadge,  setMencaoBadge]  = useState(false); // badge especial menção
   const isGestor = ["admin","gestor"].includes(usuario?.perfil);
   const mensagensRef = useRef(null);
   const inputRef     = useRef(null);
-  const assinaturasRef = useRef({}); // {canalId: subscription}
+  const assinaturasRef = useRef({});
   const canalAtivoRef  = useRef(null);
 
   const EMOJIS = ["😀","😂","👍","👎","❤️","🔥","✅","⚠️","📋","📁","💰","🏗","🎉","👀","🤔","💡"];
@@ -3890,6 +3893,21 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
   },[mensagens]);
 
   // ── Enviar mensagem ──────────────────────────────────────────────────────
+  const selecionarMencao = (u) => {
+    const cursor = inputRef.current?.selectionStart || texto.length;
+    const atPos  = texto.lastIndexOf("@", cursor-1);
+    const antes  = texto.slice(0, atPos);
+    const depois = texto.slice(cursor);
+    const novoTexto = `${antes}@${u.nome} ${depois}`;
+    setTexto(novoTexto);
+    setSugestoes([]);
+    setTimeout(()=>{
+      const pos = (antes+"@"+u.nome+" ").length;
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(pos, pos);
+    }, 0);
+  };
+
   const enviar = async ()=>{
     if(!texto.trim()||!canalAtivo||!usuario) return;
     const mencoes = usuarios.filter(u=>texto.includes(`@${u.nome}`)).map(u=>u.id);
@@ -4112,10 +4130,16 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
                       {isTemp&&<span style={{fontSize:10,color:C.cinzaClaro,marginLeft:4}}>⏳</span>}
                     </div>
                   </div>
-                  {ehMeu&&!isTemp&&(
-                    <button onClick={()=>{if(window.confirm("Excluir?"))chat.excluirMensagem(msg.id).then(()=>setMensagens(p=>p.filter(m=>m.id!==msg.id)));}}
-                      style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:12,padding:"0 2px",opacity:0,transition:"opacity 0.1s",alignSelf:"flex-start",marginTop:2}}
-                      onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=0}>🗑</button>
+                  {(ehMeu||isGestor)&&!isTemp&&(
+                    <button onClick={()=>{
+                      if(window.confirm(ehMeu?"Apagar sua mensagem?":"Apagar mensagem de "+msg.autor_nome+"?"))
+                        chat.excluirMensagem(msg.id).then(()=>setMensagens(p=>p.filter(m=>m.id!==msg.id)));
+                    }}
+                      style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:12,
+                        padding:"0 2px",opacity:0,transition:"opacity 0.1s",alignSelf:"flex-start",marginTop:2}}
+                      title={ehMeu?"Apagar minha mensagem":"Apagar mensagem (gestor)"}
+                      onMouseEnter={e=>e.currentTarget.style.opacity=1}
+                      onMouseLeave={e=>e.currentTarget.style.opacity=0}>🗑</button>
                   )}
                 </div>
               </div>
@@ -4138,8 +4162,48 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
             )}
             <div style={{display:"flex",gap:6,alignItems:"flex-end",background:C.cinzaFundo,borderRadius:10,padding:"5px 8px",border:`1px solid ${C.cinzaCard}`}}>
               <button onClick={()=>setEmoji(e=>!e)} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:C.cinzaClaro,padding:"0 2px",flexShrink:0}}>😊</button>
-              <textarea ref={inputRef} value={texto} onChange={e=>setTexto(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();enviar();}}}
+              {/* Autocomplete de menções */}
+              {sugestoes.length>0&&(
+                <div style={{position:"absolute",bottom:"100%",left:40,background:C.branco,border:`1px solid ${C.cinzaCard}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",minWidth:160,overflow:"hidden",zIndex:20}}>
+                  {sugestoes.map((u,i)=>(
+                    <div key={u.id} onClick={()=>selecionarMencao(u)}
+                      style={{padding:"7px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,
+                        background:i===sugestaoIdx?C.azulMedio:"white",
+                        color:i===sugestaoIdx?C.branco:C.cinzaEscuro}}>
+                      <div style={{width:22,height:22,borderRadius:"50%",background:u.cor||C.azulMedio,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,color:"#fff",flexShrink:0}}>
+                        {u.nome.slice(0,2).toUpperCase()}
+                      </div>
+                      <span style={{fontSize:12,fontWeight:600}}>@{u.nome}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <textarea ref={inputRef} value={texto}
+                onChange={e=>{
+                  const val = e.target.value;
+                  setTexto(val);
+                  // Detectar @ para autocomplete
+                  const cursor = e.target.selectionStart;
+                  const atPos  = val.lastIndexOf("@", cursor-1);
+                  if(atPos>=0 && (atPos===0||val[atPos-1]===" "||val[atPos-1]==="
+")){
+                    const query = val.slice(atPos+1, cursor).toLowerCase();
+                    const matches = usuarios.filter(u=>u.ativo&&u.id!==usuario?.id&&u.nome.toLowerCase().startsWith(query));
+                    setSugestoes(matches.slice(0,5));
+                    setSugestaoIdx(0);
+                  } else {
+                    setSugestoes([]);
+                  }
+                }}
+                onKeyDown={e=>{
+                  if(sugestoes.length>0){
+                    if(e.key==="ArrowDown"){e.preventDefault();setSugestaoIdx(i=>Math.min(i+1,sugestoes.length-1));return;}
+                    if(e.key==="ArrowUp")  {e.preventDefault();setSugestaoIdx(i=>Math.max(i-1,0));return;}
+                    if(e.key==="Enter"||e.key==="Tab"){e.preventDefault();selecionarMencao(sugestoes[sugestaoIdx]);return;}
+                    if(e.key==="Escape")   {setSugestoes([]);return;}
+                  }
+                  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();enviar();}
+                }}
                 placeholder={`Mensagem${canalAtivo.tipo==="canal"?" em #"+canalAtivo.nome:""}... (Enter p/ enviar)`}
                 rows={1}
                 style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,maxHeight:80,lineHeight:1.5,padding:"2px 0"}}
@@ -4213,7 +4277,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
 }
 
 
-function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, onAbrir }) {
+function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, temMencao=false, onAbrir }) {
   const [aberto,   setAberto]  = useState(false);
   const [pulsando, setPulsando]= useState(false);
 
@@ -4253,12 +4317,15 @@ function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, onAbrir }) {
           animation:pulsando?"chatPulse 0.5s ease-in-out":"none"}}>
         {aberto?"✕":"💬"}
         {badge>0&&(
-          <div style={{position:"absolute",top:-6,right:-6,background:C.vermelho,color:C.branco,
-            borderRadius:"50%",minWidth:22,height:22,display:"flex",alignItems:"center",
-            justifyContent:"center",fontSize:11,fontWeight:800,padding:"0 5px",
-            boxShadow:"0 2px 8px rgba(239,68,68,0.6)",border:"2px solid white",
+          <div style={{position:"absolute",top:-6,right:-6,
+            background:temMencao?"#f97316":C.vermelho,
+            color:C.branco,borderRadius:"50%",minWidth:22,height:22,
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:11,fontWeight:800,padding:"0 5px",
+            boxShadow:temMencao?"0 2px 8px rgba(249,115,22,0.7)":"0 2px 8px rgba(239,68,68,0.6)",
+            border:"2px solid white",
             animation:"badgePop 0.4s cubic-bezier(0.175,0.885,0.32,1.275)"}}>
-            {badge>99?"99+":badge}
+            {temMencao?"@":badge>99?"99+":badge}
           </div>
         )}
       </button>
@@ -4319,6 +4386,7 @@ export default function App(){
   const userRef       = useRef(null);
   const chatSubsRef   = useRef({});   // assinaturas globais do chat
   const [chatNaoLidos, setChatNaoLidos] = useState(0); // badge global
+  const [chatMencao,   setChatMencao]   = useState(false); // foi mencionado
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
   useEffect(() => {
@@ -4337,21 +4405,30 @@ export default function App(){
           if(chatSubsRef.current[c.id]) return;
           const sub = chat.assinarCanal(c.id, (msg)=>{
             if(msg.autor_id===user.id) return; // ignora próprias mensagens
-            // Som sempre, em qualquer aba
             tocarSomChat();
-            // Badge no botão flutuante
+            const eMencao = (msg.mencoes||[]).includes(user.id);
+            // Badge diferenciado: menção = laranja, mensagem normal = vermelho
             setChatNaoLidos(n=>n+1);
-            // Piscar título
-            piscarTitulo(`${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
-            // Notificação Windows
+            if(eMencao) setChatMencao(true); // badge laranja especial
+            piscarTitulo(eMencao
+              ? `🔔 ${msg.autor_nome} mencionou você!`
+              : `💬 ${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
             const cNome = c.tipo==="direto"
               ? (c.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"Mensagem"
               : "# "+c.nome;
-            notificarSistema(
-              `💬 ${msg.autor_nome} — ${cNome}`,
-              msg.conteudo.slice(0,80),
-              "intec-chat-global-"+c.id, 8000
-            );
+            if(eMencao){
+              // Som diferente para menção — dois bips
+              setTimeout(tocarSomChat, 200);
+              notificarSistema(
+                `🔔 ${msg.autor_nome} mencionou você em ${cNome}!`,
+                msg.conteudo.slice(0,80), "intec-mencao-global", 12000
+              );
+            } else {
+              notificarSistema(
+                `💬 ${msg.autor_nome} — ${cNome}`,
+                msg.conteudo.slice(0,80), "intec-chat-global-"+c.id, 8000
+              );
+            }
           });
           chatSubsRef.current[c.id] = sub;
         });
@@ -5010,7 +5087,7 @@ export default function App(){
     setModalH(null);
   }
 }}/>}
-      <ChatFlutuante usuario={user} usuarios={usuarios} naoLidosGlobal={chatNaoLidos} onAbrir={()=>setChatNaoLidos(0)}/>
+      <ChatFlutuante usuario={user} usuarios={usuarios} naoLidosGlobal={chatNaoLidos} temMencao={chatMencao} onAbrir={()=>{setChatNaoLidos(0);setChatMencao(false);}}/>
     </div>
   );
 }
