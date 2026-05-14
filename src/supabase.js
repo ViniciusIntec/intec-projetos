@@ -537,16 +537,6 @@ export const chat = {
     return data || [];
   },
 
-  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[]) {
-    const { data, error } = await supabase
-      .from('chat_mensagens')
-      .insert({ canal_id: canalId, autor_id: autorId, autor_nome: autorNome,
-                autor_cor: autorCor, conteudo, mencoes })
-      .select().single();
-    if (error) throw error;
-    return data;
-  },
-
   async excluirMensagem(id) {
     const { error } = await supabase.from('chat_mensagens').delete().eq('id', id);
     if (error) throw error;
@@ -560,48 +550,79 @@ export const chat = {
     if (error) throw error;
   },
 
-  // Realtime: escuta mensagens novas em um canal
+  // Realtime: escuta mensagens via Broadcast (privado por canal — só quem assinou recebe)
   assinarCanal(canalId, onMensagem) {
-    // Nome único por chamada — evita conflito com canais já subscritos
-    const nomeCanal = `chat-${canalId}-${Date.now()}`;
-    const canal = supabase.channel(nomeCanal);
-    canal.on('postgres_changes',
+    const nomeCanal = `chat-msgs-${canalId}`;
+    const sub = supabase.channel(nomeCanal);
+    // Broadcast: só recebe quem está inscrito neste canal específico
+    sub.on('broadcast', { event: 'nova_msg' }, ({ payload }) => {
+      if(payload) onMensagem(payload);
+    });
+    // Fallback: postgres_changes como backup (para casos de reconexão)
+    sub.on('postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'chat_mensagens', filter: `canal_id=eq.${canalId}` },
       payload => { if(payload.new) onMensagem(payload.new); }
     );
-    canal.subscribe((status) => {
-      if(status === 'SUBSCRIBED') {
-        console.log(`Chat realtime ativo: ${nomeCanal}`);
-      } else if(status === 'CHANNEL_ERROR') {
-        console.error(`Chat realtime erro: ${nomeCanal}`, status);
-      }
+    sub.subscribe((status) => {
+      if(status === 'SUBSCRIBED') console.log(`Chat ativo: ${nomeCanal}`);
     });
-    return canal;
+    return sub;
   },
 
   desassinarCanal(canal) {
     try { supabase.removeChannel(canal); } catch(e) {}
   },
 
+  // Envia mensagem e faz broadcast para todos no canal
+  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[]) {
+    const { data, error } = await supabase
+      .from('chat_mensagens')
+      .insert({ canal_id: canalId, autor_id: autorId, autor_nome: autorNome,
+                autor_cor: autorCor, conteudo, mencoes })
+      .select().single();
+    if(error) throw error;
+    // Broadcast para todos os assinantes deste canal específico
+    const ch = supabase.channel(`chat-msgs-${canalId}`);
+    ch.send({ type: 'broadcast', event: 'nova_msg', payload: data }).catch(()=>{});
+    return data;
+  },
+
   // Realtime: escuta quando o usuário é adicionado a um novo canal/DM
+  // Notifica um usuário específico de um novo DM via Broadcast
+  // Chamado pelo lado do criador do DM depois de criar o canal
+  async notificarNovoDM(paraUserId, canal) {
+    const ch = supabase.channel(`dm-notify-${paraUserId}`);
+    // Broadcast direto para o canal do usuário
+    await ch.subscribe();
+    await ch.send({
+      type: 'broadcast',
+      event: 'novo_dm',
+      payload: canal,
+    });
+    supabase.removeChannel(ch);
+  },
+
+  // Escuta notificações de novos DMs endereçadas a este usuário via Broadcast
   assinarMembros(userId, onNovoCanal) {
-    const nome = `chat-membros-${userId}-${Date.now()}`;
+    const nome = `dm-notify-${userId}`;
     const sub = supabase.channel(nome);
+    sub.on('broadcast', { event: 'novo_dm' }, ({ payload }) => {
+      console.log('[Chat DM] Novo DM recebido via broadcast:', payload);
+      if(payload) onNovoCanal(payload);
+    });
+    // Manter também postgres_changes como fallback (caso broadcast falhe)
     sub.on('postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'chat_membros', filter: `usuario_id=eq.${userId}` },
       async payload => {
-        console.log('[Chat Realtime] Novo membro inserido:', payload.new);
+        console.log('[Chat DM] Novo membro (fallback):', payload.new);
         if(!payload.new?.canal_id) return;
         const { data } = await supabase
           .from('chat_canais').select('*').eq('id', payload.new.canal_id).single();
-        if(data) {
-          console.log('[Chat Realtime] Canal DM detectado:', data.nome);
-          onNovoCanal(data);
-        }
+        if(data) onNovoCanal(data);
       }
     );
     sub.subscribe((status, err) => {
-      console.log(`[Chat Realtime] chat_membros status: ${status}`, err||'');
+      console.log(`[Chat DM] dm-notify-${userId} status: ${status}`, err||'');
     });
     return sub;
   },

@@ -4357,11 +4357,13 @@ export default function App(){
 
   // ── Helper: iniciar DM ────────────────────────────────────────────────────
   const chatIniciarDM = useCallback(async (outro) => {
-    const canal = await chat.obterOuCriarDM(user.id,outro.id,user.nome,outro.nome);
-    chatCanaisAutorizados.current.add(canal.id); // autorizar antes de assinar
+    const canal = await chat.obterOuCriarDM(user.id, outro.id, user.nome, outro.nome);
+    chatCanaisAutorizados.current.add(canal.id);
     setChatCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
     assinarCanalGlobal(canal);
     chatSelecionarCanal(canal);
+    // Notificar o outro usuário via Broadcast (direto, sem passar por postgres_changes)
+    chat.notificarNovoDM(outro.id, canal).catch(()=>{});
   }, [user?.id, assinarCanalGlobal, chatSelecionarCanal]);
 
   // ── Helper: criar canal ───────────────────────────────────────────────────
