@@ -4213,18 +4213,25 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
 }
 
 
-function ChatFlutuante({ usuario, usuarios }) {
-  const [aberto,    setAberto]    = useState(false);
-  const [naoLidos,  setNaoLidos]  = useState(0);
-  const [pulsando,  setPulsando]  = useState(false);
+function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, onAbrir }) {
+  const [aberto,   setAberto]  = useState(false);
+  const [pulsando, setPulsando]= useState(false);
 
-  // Recebe contagem do componente Chat filho
-  const onNaoLidos = (total) => {
-    if(total > naoLidos && !aberto) {
+  // Badge = global (do App) quando fechado, zero quando aberto
+  const badge = aberto ? 0 : naoLidosGlobal;
+
+  useEffect(()=>{
+    if(naoLidosGlobal > 0 && !aberto){
       setPulsando(true);
-      setTimeout(()=>setPulsando(false), 1000);
+      setTimeout(()=>setPulsando(false), 800);
     }
-    setNaoLidos(total);
+  },[naoLidosGlobal]);
+
+  const abrir = () => {
+    setAberto(a=>{
+      if(!a) onAbrir?.(); // zerar badge global
+      return !a;
+    });
   };
 
   return (
@@ -4233,10 +4240,10 @@ function ChatFlutuante({ usuario, usuarios }) {
         <div style={{position:"absolute",bottom:68,right:0,width:700,maxWidth:"96vw"}}>
           <Chat usuario={usuario} usuarios={usuarios} flutuante
             onFechar={()=>setAberto(false)}
-            onNaoLidos={onNaoLidos}/>
+            onNaoLidos={()=>{}}/>
         </div>
       )}
-      <button onClick={()=>{setAberto(a=>!a); if(!aberto) setNaoLidos(0);}}
+      <button onClick={abrir}
         style={{width:54,height:54,borderRadius:"50%",
           background:aberto?C.azulEscuro:`linear-gradient(135deg,${C.azulMedio},${C.ciano})`,
           border:"none",cursor:"pointer",
@@ -4245,13 +4252,13 @@ function ChatFlutuante({ usuario, usuarios }) {
           transition:"all 0.3s",color:C.branco,position:"relative",
           animation:pulsando?"chatPulse 0.5s ease-in-out":"none"}}>
         {aberto?"✕":"💬"}
-        {naoLidos>0&&!aberto&&(
-          <div style={{position:"absolute",top:-5,right:-5,background:C.vermelho,color:C.branco,
-            borderRadius:"50%",minWidth:20,height:20,display:"flex",alignItems:"center",
-            justifyContent:"center",fontSize:11,fontWeight:800,padding:"0 4px",
-            boxShadow:"0 2px 6px rgba(0,0,0,0.3)",
-            animation:"badgePop 0.3s ease-out"}}>
-            {naoLidos>9?"9+":naoLidos}
+        {badge>0&&(
+          <div style={{position:"absolute",top:-6,right:-6,background:C.vermelho,color:C.branco,
+            borderRadius:"50%",minWidth:22,height:22,display:"flex",alignItems:"center",
+            justifyContent:"center",fontSize:11,fontWeight:800,padding:"0 5px",
+            boxShadow:"0 2px 8px rgba(239,68,68,0.6)",border:"2px solid white",
+            animation:"badgePop 0.4s cubic-bezier(0.175,0.885,0.32,1.275)"}}>
+            {badge>99?"99+":badge}
           </div>
         )}
       </button>
@@ -4305,18 +4312,57 @@ export default function App(){
   const drive    = useGoogleDrive();
   const timerRef      = useRef(null);
   const expRef        = useRef(null);
-  const notifRef      = useRef(null); // timer de notificações gerais
+  const notifRef      = useRef(null);
   const registrosRef  = useRef([]);
   const encerrarRef   = useRef(null);
   const projetosRef   = useRef([]);
   const userRef       = useRef(null);
+  const chatSubsRef   = useRef({});   // assinaturas globais do chat
+  const [chatNaoLidos, setChatNaoLidos] = useState(0); // badge global
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
   useEffect(() => {
     registrosRef.current = registros;
   }, [registros]);
   useEffect(() => { projetosRef.current  = projetos;   }, [projetos]);
-  useEffect(() => { userRef.current      = user;        }, [user]);
+  useEffect(() => { userRef.current = user; }, [user]);
+
+  // ── Chat global: assinaturas sempre ativas mesmo fora da aba Chat ────────
+  useEffect(()=>{
+    if(!user) return;
+    const iniciarChatGlobal = async () => {
+      try {
+        const canais = await chat.listarCanais(user.id);
+        canais.forEach(c=>{
+          if(chatSubsRef.current[c.id]) return;
+          const sub = chat.assinarCanal(c.id, (msg)=>{
+            if(msg.autor_id===user.id) return; // ignora próprias mensagens
+            // Som sempre, em qualquer aba
+            tocarSomChat();
+            // Badge no botão flutuante
+            setChatNaoLidos(n=>n+1);
+            // Piscar título
+            piscarTitulo(`${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
+            // Notificação Windows
+            const cNome = c.tipo==="direto"
+              ? (c.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"Mensagem"
+              : "# "+c.nome;
+            notificarSistema(
+              `💬 ${msg.autor_nome} — ${cNome}`,
+              msg.conteudo.slice(0,80),
+              "intec-chat-global-"+c.id, 8000
+            );
+          });
+          chatSubsRef.current[c.id] = sub;
+        });
+      } catch(e){ console.warn("Chat global:", e); }
+    };
+    iniciarChatGlobal();
+    return ()=>{
+      Object.values(chatSubsRef.current).forEach(s=>{ try{ chat.desassinarCanal(s); }catch(e){} });
+      chatSubsRef.current = {};
+    };
+  },[user?.id]);
 
   // ── Carregar dados do Supabase ao iniciar ──
   useEffect(() => {
@@ -4964,7 +5010,7 @@ export default function App(){
     setModalH(null);
   }
 }}/>}
-      <ChatFlutuante usuario={user} usuarios={usuarios}/>
+      <ChatFlutuante usuario={user} usuarios={usuarios} naoLidosGlobal={chatNaoLidos} onAbrir={()=>setChatNaoLidos(0)}/>
     </div>
   );
 }
