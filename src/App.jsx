@@ -124,15 +124,17 @@ const TIPOS = {
   PA:"Proj. Arquitetônico", PF:"Proj. Fundação",       CT:"Consultoria", RE:"Revisão",
 };
 
-// Disciplinas disponíveis para projetos de Compatibilização (CB)
+// Disciplinas do sistema — mesmos tipos de TIPOS
 const DISCIPLINAS_CB = [
-  { id:"PE", label:"Proj. Estrutural",     icone:"🏗",  cor:"#2563a8" },
-  { id:"PF", label:"Proj. Fundação",        icone:"⚓",  cor:"#0891b2" },
+  { id:"PE", label:"Proj. Estrutural",      icone:"🏗",  cor:"#2563a8" },
+  { id:"PR", label:"Proj. Reforço",         icone:"🔩",  cor:"#0891b2" },
+  { id:"LT", label:"Laudo Técnico",         icone:"📋",  cor:"#059669" },
   { id:"EL", label:"Proj. Elétrico",        icone:"⚡",  cor:"#f59e0b" },
   { id:"PH", label:"Proj. Hidrossanitário", icone:"💧",  cor:"#06b6d4" },
-  { id:"PA", label:"Proj. Ar-Condicionado", icone:"❄️",  cor:"#8b5cf6" },
-  { id:"AR", label:"Proj. Arquitetônico",   icone:"📐",  cor:"#ec4899" },
-  { id:"IT", label:"Proj. PPCI/Incêndio",   icone:"🔥",  cor:"#ef4444" },
+  { id:"PA", label:"Proj. Arquitetônico",   icone:"📐",  cor:"#ec4899" },
+  { id:"PF", label:"Proj. Fundação",        icone:"⚓",  cor:"#8b5cf6" },
+  { id:"CT", label:"Consultoria",           icone:"💼",  cor:"#6366f1" },
+  { id:"CB", label:"Compatibilização",      icone:"🔗",  cor:"#9333ea" },
 ];
 
 const USUARIOS_PADRAO = [
@@ -2844,138 +2846,63 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               👥 Equipe & Responsabilidades
             </h3>
 
-            {/* CB: disciplinas com responsável por disciplina */}
-            {form.tipo==="CB" ? (
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <div style={{fontSize:12,color:C.cinzaClaro,marginBottom:4}}>
-                  Adicione as disciplinas e defina quem faz cada uma:
-                </div>
-                {/* Botões para adicionar disciplina */}
-                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:4}}>
-                  {DISCIPLINAS_CB.filter(d=>!(form.disciplinas||[]).find(x=>x.id===d.id)).map(d=>(
-                    <button key={d.id} onClick={()=>{
-                      const nova = {id:d.id,label:d.label,icone:d.icone,cor:d.cor,concluido:false,dataConclusao:"",responsavel:"",obs:"",pausada:false};
-                      s("disciplinas",[...(form.disciplinas||[]),nova]);
-                      // Atualizar campos de responsável automaticamente ao adicionar
-                    }}
-                      style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,border:`1.5px dashed ${d.cor}`,background:"transparent",color:d.cor,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>
-                      {d.icone} + {d.id}
-                    </button>
-                  ))}
-                  {!(form.disciplinas||[]).length&&<span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>Nenhuma disciplina adicionada ainda</span>}
-                </div>
-                {/* Lista de disciplinas como cards de equipe */}
-                {(form.disciplinas||[]).map((d,i)=>(
-                  <div key={d.id} style={{display:"flex",gap:12,alignItems:"flex-start",padding:"12px 14px",borderRadius:10,
-                    border:`2px solid ${d.pausada?"#fde68a":d.concluido?d.cor+"60":C.cinzaCard}`,
-                    background:d.pausada?"#fffbeb":d.concluido?d.cor+"06":"white"}}>
-                    {/* Ícone + badge */}
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,width:44}}>
-                      <div style={{fontSize:22}}>{d.icone}</div>
-                      <span style={{fontSize:9,background:d.cor+"20",color:d.cor,padding:"1px 5px",borderRadius:4,fontWeight:800}}>{d.id}</span>
-                    </div>
-                    {/* Conteúdo */}
-                    <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
-                      {/* Linha 1: label + status */}
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:13,fontWeight:700,color:d.pausada?"#92400e":d.concluido?d.cor:C.cinzaEscuro,textDecoration:d.concluido?"line-through":"none"}}>{d.label}</span>
-                        {d.pausada&&<span style={{fontSize:10,background:"#fde68a",color:"#92400e",padding:"1px 6px",borderRadius:4,fontWeight:700}}>⏸ Pausada</span>}
-                        {d.concluido&&<span style={{fontSize:10,background:d.cor+"20",color:d.cor,padding:"1px 6px",borderRadius:4,fontWeight:700}}>✓ Concluída</span>}
-                      </div>
-                      {/* Linha 2: responsável (select direto) */}
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:11,color:C.cinzaClaro,flexShrink:0}}>👤 Responsável:</span>
-                        <select value={d.responsavel||""} onChange={e=>{
-                            const novoResp = e.target.value;
-                            const novas = (form.disciplinas||[]).map((x,j)=>j===i?{...x,responsavel:novoResp}:x);
-                            s("disciplinas", novas);
-                            // Sincronizar responsavel principal automaticamente
-                            const resps = novas.filter(x=>x.responsavel).map(x=>x.responsavel);
-                            const uniq = [...new Set(resps)];
-                            if(uniq[0]) s("responsavel", uniq[0]);
-                            if(uniq[1]) s("coresponsavel", uniq[1]);
-                            if(uniq[2]) s("coresponsavel2", uniq[2]);
-                            if(uniq[3]) s("coresponsavel3", uniq[3]);
-                          }}
-                          style={{flex:1,border:`1.5px solid ${d.responsavel?d.cor:C.cinzaCard}`,borderRadius:7,padding:"5px 10px",fontSize:12,fontFamily:"inherit",cursor:"pointer",background:d.responsavel?d.cor+"08":"white",fontWeight:d.responsavel?700:400,color:d.responsavel?d.cor:C.cinzaClaro}}>
-                          <option value="">— Atribuir responsável —</option>
-                          {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome}</option>)}
-                        </select>
-                      </div>
-                      {/* Linha 3: descrição do que vai fazer */}
-                      <input value={d.obs||""} onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,obs:e.target.value}:x))}
-                        placeholder={`O que ${d.responsavel||"o responsável"} vai fazer nesta disciplina...`}
-                        style={{border:`1px solid ${C.cinzaCard}`,borderRadius:7,padding:"5px 10px",fontSize:11,fontFamily:"inherit",color:C.cinzaEscuro,background:"#fafafa"}}/>
-                      {/* Linha 4: check concluído + data */}
-                      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                        <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11}}>
-                          <input type="checkbox" checked={!!d.concluido}
-                            onChange={e=>{const hoje=new Date().toISOString().slice(0,10);s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,concluido:e.target.checked,dataConclusao:e.target.checked?(x.dataConclusao||hoje):"",pausada:false}:x));}}
-                            style={{width:14,height:14,accentColor:d.cor}}/>
-                          <span style={{color:C.cinzaClaro}}>Marcar como concluída</span>
-                        </label>
-                        {d.concluido&&<input type="date" value={d.dataConclusao||""} max={new Date().toISOString().slice(0,10)}
-                          onChange={e=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,dataConclusao:e.target.value}:x))}
-                          style={{border:`1.5px solid ${d.cor}`,borderRadius:6,padding:"3px 8px",fontSize:11,fontFamily:"inherit",color:d.cor,fontWeight:700}}/>}
-                      </div>
-                    </div>
-                    {/* Ações direita */}
-                    <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
-                      {!d.concluido&&<button onClick={()=>s("disciplinas",(form.disciplinas||[]).map((x,j)=>j===i?{...x,pausada:!x.pausada}:x))}
-                        title={d.pausada?"Retomar":"Pausar esta disciplina"}
-                        style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:d.pausada?"#f59e0b":"#94a3b8",padding:2}}>
-                        {d.pausada?"▶":"⏸"}
-                      </button>}
-                      <button onClick={()=>s("disciplinas",(form.disciplinas||[]).filter((_,j)=>j!==i))}
-                        style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",fontSize:14,padding:2}}>✕</button>
-                    </div>
-                  </div>
-                ))}
-                {/* Barra de progresso */}
-                {(form.disciplinas||[]).length>0&&(()=>{
-                  const total=form.disciplinas.length; const ok=form.disciplinas.filter(d=>d.concluido).length;
-                  const pausadas=form.disciplinas.filter(d=>d.pausada).length;
-                  const pct=Math.round((ok/total)*100);
-                  return <div style={{marginTop:4}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.cinzaClaro,marginBottom:4}}>
-                      <span>{pausadas>0&&<span style={{color:"#f59e0b",fontWeight:700,marginRight:8}}>⏸ {pausadas} pausada(s)</span>}Progresso</span>
-                      <span style={{fontWeight:700,color:pct===100?C.verde:C.azulMedio}}>{pct}% ({ok}/{total})</span>
-                    </div>
-                    <div style={{background:C.cinzaCard,borderRadius:6,height:8}}><div style={{background:pct===100?C.verde:C.azulMedio,height:8,borderRadius:6,width:`${pct}%`,transition:"width 0.4s"}}/></div>
-                  </div>;
-                })()}
-              </div>
-            ) : (
-              /* Outros tipos: responsável principal + equipe */
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <Sel label="Responsável Principal" value={form.responsavel} onChange={v=>s("responsavel",v)}
-                  options={[{value:"",label:"— Selecione —"},...usuarios.filter(u=>u.ativo).map(u=>({value:u.nome,label:u.nome}))]}/>
-                {/* Equipe adicional — checkboxes */}
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  <label style={{fontSize:12,fontWeight:600,color:C.cinzaEscuro}}>Equipe (co-responsáveis)</label>
+            {/* Equipe: selecionar pessoa → atribuir disciplinas (funciona para todos os tipos) */}
+            {(()=>{
+              // Helper: derivar responsavel/coresponsavel dos membros da equipe
+              const sincronizarResps = (membros) => {
+                const nomes = [...new Set(membros.map(m=>m.usuarioNome).filter(Boolean))];
+                s("responsavel",    nomes[0]||"");
+                s("coresponsavel",  nomes[1]||"");
+                s("coresponsavel2", nomes[2]||"");
+                s("coresponsavel3", nomes[3]||"");
+              };
+              // Usar form.disciplinas como lista de membros: [{usuarioNome, disciplinas:[], obs:""}]
+              // Formato novo — detectar se é formato antigo (tem campo "id" sem "usuarioNome")
+              const membros = (form.disciplinas||[]).map(d=>
+                d.usuarioNome ? d : {usuarioNome:d.responsavel||"", disciplinas:d.id?[d.id]:[], obs:d.obs||""}
+              ).filter(m=>m.usuarioNome);
+
+              const usuariosDisponiveis = usuarios.filter(u=>u.ativo);
+              const adicionarMembro = (u) => {
+                if(membros.find(m=>m.usuarioNome===u.nome)) return;
+                const novos = [...membros, {usuarioNome:u.nome, disciplinas:[], obs:""}];
+                s("disciplinas", novos);
+                sincronizarResps(novos);
+              };
+              const removerMembro = (nome) => {
+                const novos = membros.filter(m=>m.usuarioNome!==nome);
+                s("disciplinas", novos);
+                sincronizarResps(novos);
+              };
+              const toggleDisc = (mIdx, discId) => {
+                const novos = membros.map((m,i)=>i!==mIdx?m:{
+                  ...m,
+                  disciplinas: m.disciplinas.includes(discId)
+                    ? m.disciplinas.filter(d=>d!==discId)
+                    : [...m.disciplinas, discId]
+                });
+                s("disciplinas", novos);
+              };
+              const setObs = (mIdx, obs) => {
+                s("disciplinas", membros.map((m,i)=>i!==mIdx?m:{...m,obs}));
+              };
+
+              return (
+                <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                  {/* Botões para adicionar membro */}
                   <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                    {usuarios.filter(u=>u.ativo&&u.nome!==form.responsavel).map(u=>{
-                      const jaEsta=[form.coresponsavel,form.coresponsavel2,form.coresponsavel3].includes(u.nome);
+                    {usuariosDisponiveis.map(u=>{
+                      const jaEsta = membros.find(m=>m.usuarioNome===u.nome);
                       return(
-                        <button key={u.id} onClick={()=>{
-                          const slots=["coresponsavel","coresponsavel2","coresponsavel3"];
-                          if(jaEsta){
-                            // remover
-                            const vals=[form.coresponsavel,form.coresponsavel2,form.coresponsavel3]
-                              .filter(v=>v&&v!==u.nome);
-                            s("coresponsavel",vals[0]||"");s("coresponsavel2",vals[1]||"");s("coresponsavel3",vals[2]||"");
-                          } else {
-                            const livre=slots.find(k=>!form[k]);
-                            if(livre)s(livre,u.nome);
-                          }
-                        }}
-                          style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,
-                            border:`2px solid ${jaEsta?C.azulMedio:C.cinzaCard}`,
-                            background:jaEsta?C.azulMedio+"15":"white",
-                            color:jaEsta?C.azulMedio:C.cinzaClaro,
-                            cursor:"pointer",fontSize:12,fontWeight:jaEsta?700:400,fontFamily:"inherit",
-                            transition:"all 0.15s"}}>
-                          <span style={{width:22,height:22,borderRadius:"50%",background:jaEsta?C.azulMedio:C.cinzaCard,
+                        <button key={u.id} onClick={()=>jaEsta?null:adicionarMembro(u)}
+                          disabled={!!jaEsta}
+                          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,
+                            border:`2px solid ${jaEsta?u.cor||C.azulMedio:C.cinzaCard}`,
+                            background:jaEsta?(u.cor||C.azulMedio)+"18":"white",
+                            color:jaEsta?u.cor||C.azulMedio:C.cinzaClaro,
+                            cursor:jaEsta?"default":"pointer",fontSize:12,fontWeight:jaEsta?700:400,
+                            fontFamily:"inherit",transition:"all 0.15s",opacity:jaEsta?1:0.8}}>
+                          <span style={{width:22,height:22,borderRadius:"50%",background:u.cor||C.azulMedio,
                             display:"flex",alignItems:"center",justifyContent:"center",
                             color:"white",fontSize:9,fontWeight:800,flexShrink:0}}>
                             {u.nome.slice(0,2).toUpperCase()}
@@ -2986,12 +2913,61 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                       );
                     })}
                   </div>
-                  {[form.coresponsavel,form.coresponsavel2,form.coresponsavel3].filter(Boolean).length===0&&(
-                    <span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>Nenhum co-responsável adicionado</span>
-                  )}
+                  {membros.length===0&&<span style={{fontSize:11,color:C.cinzaClaro,fontStyle:"italic"}}>
+                    Nenhum colaborador adicionado ao projeto ainda
+                  </span>}
+
+                  {/* Cards por membro */}
+                  {membros.map((m,mIdx)=>{
+                    const u = usuariosDisponiveis.find(x=>x.nome===m.usuarioNome)||{cor:C.azulMedio,nome:m.usuarioNome};
+                    return(
+                      <div key={m.usuarioNome} style={{border:`2px solid ${u.cor||C.azulMedio}22`,borderRadius:12,
+                        background:`${u.cor||C.azulMedio}05`,overflow:"hidden"}}>
+                        {/* Header do membro */}
+                        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                          borderBottom:`1px solid ${u.cor||C.azulMedio}22`,background:`${u.cor||C.azulMedio}10`}}>
+                          <div style={{width:32,height:32,borderRadius:"50%",background:u.cor||C.azulMedio,
+                            display:"flex",alignItems:"center",justifyContent:"center",
+                            color:"white",fontSize:11,fontWeight:800,flexShrink:0}}>
+                            {m.usuarioNome.slice(0,2).toUpperCase()}
+                          </div>
+                          <span style={{fontSize:13,fontWeight:700,color:u.cor||C.azulMedio,flex:1}}>{m.usuarioNome}</span>
+                          <button onClick={()=>removerMembro(m.usuarioNome)}
+                            style={{background:"none",border:"none",color:C.cinzaClaro,cursor:"pointer",
+                              fontSize:16,padding:"0 4px",lineHeight:1}}>✕</button>
+                        </div>
+                        {/* Disciplinas */}
+                        <div style={{padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                          <div style={{fontSize:11,color:C.cinzaClaro,fontWeight:600}}>Disciplinas atribuídas:</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                            {DISCIPLINAS_CB.map(d=>{
+                              const ativo = (m.disciplinas||[]).includes(d.id);
+                              return(
+                                <button key={d.id} onClick={()=>toggleDisc(mIdx,d.id)}
+                                  style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+                                    borderRadius:14,border:`1.5px solid ${ativo?d.cor:C.cinzaCard}`,
+                                    background:ativo?d.cor:"white",color:ativo?"white":C.cinzaClaro,
+                                    cursor:"pointer",fontSize:11,fontWeight:ativo?700:400,
+                                    fontFamily:"inherit",transition:"all 0.12s"}}>
+                                  {d.icone} {d.id}
+                                  {ativo&&<span style={{fontSize:9}}>✓</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <input value={m.obs||""} onChange={e=>setObs(mIdx,e.target.value)}
+                            placeholder="Observações sobre a participação..."
+                            style={{border:`1px solid ${C.cinzaCard}`,borderRadius:7,padding:"5px 10px",
+                              fontSize:11,fontFamily:"inherit",color:C.cinzaEscuro,background:"#fafafa",
+                              width:"100%",boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            )}
+              );
+            })()}
+            {/* Separador antes do bloco não-CB antigo — agora tudo usa o bloco acima */}
           </div>
 
 
@@ -3059,7 +3035,19 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
             {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
-            <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>onSave(form)}>💾 Salvar</Btn></div>
+            <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>{
+              // Sincronizar responsavel/coresponsavel a partir das disciplinas antes de salvar
+              const membros = (form.disciplinas||[]).filter(d=>d.usuarioNome);
+              const nomes = [...new Set(membros.map(m=>m.usuarioNome).filter(Boolean))];
+              const formFinal = {
+                ...form,
+                responsavel:    nomes[0]||"",
+                coresponsavel:  nomes[1]||"",
+                coresponsavel2: nomes[2]||"",
+                coresponsavel3: nomes[3]||"",
+              };
+              onSave(formFinal);
+            }}>💾 Salvar</Btn></div>
           </div>
         </>}
 
