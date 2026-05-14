@@ -3854,6 +3854,34 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
       mensagensRef.current.scrollTop = mensagensRef.current.scrollHeight;
   },[mensagens]);
 
+  // ── Registrar callback de realtime no sistema global ────────────────────
+  // O App.jsx pai mantém assinaturas globais e chama esse callback quando
+  // chega mensagem nova. Aqui decidimos: exibir ou incrementar badge.
+  useEffect(()=>{
+    if(!onRegisterCallback) return;
+    const handler = (canalId, msg) => {
+      // Se a mensagem é do próprio usuário, ignorar (já foi adicionada por optimistic update)
+      if(msg.autor_id === usuario?.id) return;
+      const estaNoCanal = canalAtivoRef.current?.id === canalId;
+      if(estaNoCanal) {
+        // Canal ativo: adicionar mensagem na lista em tempo real
+        setMensagens(prev=>{
+          // Evitar duplicata (pode ter chegado via realtime e optimistic)
+          if(prev.find(m=>m.id===msg.id)) return prev;
+          return [...prev, msg];
+        });
+        // Já está lendo — marcar como lido imediatamente
+        if(usuario) chat.marcarLido(canalId, usuario.id).catch(()=>{});
+      } else {
+        // Canal inativo: incrementar badge de não lidos
+        setNaoLidos(prev=>({...prev,[canalId]:(prev[canalId]||0)+1}));
+      }
+    };
+    onRegisterCallback(handler);
+    // Limpar ao desmontar
+    return ()=>{ onRegisterCallback(null); };
+  },[onRegisterCallback, usuario?.id]);
+
   // ── Enviar mensagem ──────────────────────────────────────────────────────
   const selecionarMencao = (u) => {
     const cursor = inputRef.current?.selectionStart || texto.length;
@@ -4339,7 +4367,7 @@ export default function App(){
   const projetosRef   = useRef([]);
   const userRef       = useRef(null);
   const chatSubsRef     = useRef({});   // assinaturas globais
-  const chatCallbackRef = useRef(null); // callback do Chat aberto (para msgs em tempo real)
+  const chatCallbackRef = useRef({}); // {aba: fn, flutuante: fn} — múltiplos listeners
   const [chatNaoLidos, setChatNaoLidos] = useState(0);
   const [chatMencao,   setChatMencao]   = useState(false);
 
@@ -4361,7 +4389,7 @@ export default function App(){
           const sub = chat.assinarCanal(c.id, (msg)=>{
             // Repassar para o Chat aberto (se estiver no canal correto)
             if(chatCallbackRef.current) {
-              chatCallbackRef.current(c.id, msg);
+              Object.values(chatCallbackRef.current).forEach(fn=>{ try{ fn(c.id, msg); }catch(e){} });
             }
             if(msg.autor_id===user.id) return; // não notifica as próprias msgs
             tocarSomChat();
@@ -5018,7 +5046,9 @@ export default function App(){
         {aba==="financeiro"&&<Financeiro projetos={projetos}/>}
         {aba==="horas"     &&<AbaHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
         {aba==="agenda"    &&<AbaAgenda calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
-        {aba==="chat"      &&<div style={{height:"calc(100vh - 140px)"}}><Chat usuario={user} usuarios={usuarios}/></div>}
+        {aba==="chat"      &&<div style={{height:"calc(100vh - 140px)"}}><Chat usuario={user} usuarios={usuarios}
+          onNaoLidos={n=>{setChatNaoLidos(n);}}
+          onRegisterCallback={cb=>{ if(cb) chatCallbackRef.current.aba=cb; else delete chatCallbackRef.current.aba; }}/></div>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
       </main>
 
@@ -5048,7 +5078,7 @@ export default function App(){
       <ChatFlutuante usuario={user} usuarios={usuarios}
         naoLidosGlobal={chatNaoLidos} temMencao={chatMencao}
         onAbrir={()=>{setChatNaoLidos(0);setChatMencao(false);}}
-        onRegisterCallback={cb=>{ chatCallbackRef.current=cb; }}/>
+        onRegisterCallback={cb=>{ if(cb) chatCallbackRef.current.flutuante=cb; else delete chatCallbackRef.current.flutuante; }}/>
     </div>
   );
 }
