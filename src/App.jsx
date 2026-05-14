@@ -3807,7 +3807,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
           if(msg.autor_id!==usuario.id){
             tocarSomChat();
             const cNome = c.tipo==="direto"
-              ? c.nome.split("↔").find(n=>n.trim()!==usuario.nome)?.trim()||"Direto"
+              ? (c.nome||"").split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||c.nome||"Direto"
               : "# "+c.nome;
             notificarSistema(`💬 ${msg.autor_nome} em ${cNome}`,msg.conteudo.slice(0,80),"intec-chat-"+canalId,7000);
             if((msg.mencoes||[]).includes(usuario.id)){
@@ -3981,7 +3981,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
           {/* DMs */}
           <div style={{padding:"10px 12px 2px",fontSize:9,fontWeight:700,color:"rgba(255,255,255,0.35)",letterSpacing:1,marginTop:6}}>MENSAGENS DIRETAS</div>
           {canais.filter(c=>c.tipo==="direto").map(c=>{
-            const nomeOutro=c.nome.split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||c.nome;
+            const nomeOutro=(c.nome||"").split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||c.nome||"";
             const outroU=usuarios.find(u=>u.nome===nomeOutro);
             const nl=naoLidos[c.id]||0;
             const ativo=canalAtivo?.id===c.id;
@@ -4021,7 +4021,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
               <div style={{fontWeight:700,fontSize:14,color:C.cinzaEscuro}}>
                 {canalAtivo.tipo==="canal"?"# ":""}{
                   canalAtivo.tipo==="direto"
-                    ? canalAtivo.nome.split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||canalAtivo.nome
+                    ? (canalAtivo.nome||"").split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||canalAtivo.nome||""
                     : canalAtivo.nome
                 }
               </div>

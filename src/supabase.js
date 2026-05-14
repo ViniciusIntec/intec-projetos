@@ -504,7 +504,13 @@ export const chat = {
         .in('canal_id', canalIds);
       
       const dmExistente = membros2?.find(m => m.chat_canais?.tipo === 'direto');
-      if (dmExistente) return { id: dmExistente.canal_id, tipo: 'direto' };
+      if (dmExistente) {
+        // Buscar canal completo com nome
+        const { data: canalCompleto } = await supabase
+          .from('chat_canais').select('*').eq('id', dmExistente.canal_id).single();
+        if (canalCompleto) return canalCompleto;
+        return { id: dmExistente.canal_id, tipo: 'direto', nome: `${nome1} ↔ ${nome2}`, icone: '👤' };
+      }
     }
 
     // Criar novo DM
