@@ -3841,10 +3841,15 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
     chat.listarMensagens(canalAtivo.id,100)
       .then(msgs=>{ setMensagens(msgs); setCarreg(false); })
       .catch(()=>setCarreg(false));
-    // Zerar não lidos deste canal
-    setNaoLidos(prev=>({...prev,[canalAtivo.id]:0}));
+    // Zerar não lidos deste canal (local + recalcula total via onNaoLidos)
+    setNaoLidos(prev=>{
+      const novo = {...prev,[canalAtivo.id]:0};
+      // Recalcular total e avisar o pai
+      const total = Object.values(novo).reduce((a,b)=>a+b,0);
+      onNaoLidos?.(total);
+      return novo;
+    });
     if(usuario) chat.marcarLido(canalAtivo.id, usuario.id).catch(()=>{});
-    // Focar input
     setTimeout(()=>inputRef.current?.focus(),100);
   },[canalAtivo?.id]);
 
@@ -3854,31 +3859,35 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegi
       mensagensRef.current.scrollTop = mensagensRef.current.scrollHeight;
   },[mensagens]);
 
-  // ── Registrar callback de realtime no sistema global ────────────────────
-  // O App.jsx pai mantém assinaturas globais e chama esse callback quando
-  // chega mensagem nova. Aqui decidimos: exibir ou incrementar badge.
+  // ── Registrar callbacks no sistema global (realtime + novoCanal + naoLidos) ──
   useEffect(()=>{
     if(!onRegisterCallback) return;
-    const handler = (canalId, msg) => {
-      // Se a mensagem é do próprio usuário, ignorar (já foi adicionada por optimistic update)
-      if(msg.autor_id === usuario?.id) return;
-      const estaNoCanal = canalAtivoRef.current?.id === canalId;
-      if(estaNoCanal) {
-        // Canal ativo: adicionar mensagem na lista em tempo real
-        setMensagens(prev=>{
-          // Evitar duplicata (pode ter chegado via realtime e optimistic)
-          if(prev.find(m=>m.id===msg.id)) return prev;
-          return [...prev, msg];
-        });
-        // Já está lendo — marcar como lido imediatamente
-        if(usuario) chat.marcarLido(canalId, usuario.id).catch(()=>{});
-      } else {
-        // Canal inativo: incrementar badge de não lidos
-        setNaoLidos(prev=>({...prev,[canalId]:(prev[canalId]||0)+1}));
-      }
+    // Objeto com três handlers que o App chama
+    const handlers = {
+      // Mensagem nova em algum canal
+      mensagem: (canalId, msg) => {
+        if(msg.autor_id === usuario?.id) return; // própria msg já foi via optimistic
+        const estaNoCanal = canalAtivoRef.current?.id === canalId;
+        if(estaNoCanal) {
+          setMensagens(prev=>{
+            if(prev.find(m=>m.id===msg.id)) return prev;
+            return [...prev, msg];
+          });
+          if(usuario) chat.marcarLido(canalId, usuario.id).catch(()=>{});
+        } else {
+          setNaoLidos(prev=>({...prev,[canalId]:(prev[canalId]||0)+1}));
+        }
+      },
+      // Novo canal/DM criado para este usuário
+      novoCanal: (canal) => {
+        setCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
+      },
+      // Sincronizar naoLidos com o ref global do App
+      atualizarNaoLidos: (mapa) => {
+        setNaoLidos(mapa);
+      },
     };
-    onRegisterCallback(handler);
-    // Limpar ao desmontar
+    onRegisterCallback(handlers);
     return ()=>{ onRegisterCallback(null); };
   },[onRegisterCallback, usuario?.id]);
 
@@ -4366,10 +4375,63 @@ export default function App(){
   const encerrarRef   = useRef(null);
   const projetosRef   = useRef([]);
   const userRef       = useRef(null);
-  const chatSubsRef     = useRef({});   // assinaturas globais
-  const chatCallbackRef = useRef({}); // {aba: fn, flutuante: fn} — múltiplos listeners
+  const chatSubsRef     = useRef({});   // assinaturas de mensagens por canal {canalId: sub}
+  const chatMembrosSub  = useRef(null); // assinatura de novos canais/DMs
+  const chatCallbackRef = useRef(null); // callback do Chat aberto (para msgs em tempo real)
+  const chatNaoLidosRef = useRef({});   // {canalId: count} — persiste entre remontagens
   const [chatNaoLidos, setChatNaoLidos] = useState(0);
   const [chatMencao,   setChatMencao]   = useState(false);
+
+  // Helper: incrementar naoLidos de um canal e recalcular total
+  const incrementarNaoLidos = useCallback((canalId) => {
+    chatNaoLidosRef.current[canalId] = (chatNaoLidosRef.current[canalId] || 0) + 1;
+    const total = Object.values(chatNaoLidosRef.current).reduce((a,b)=>a+b,0);
+    setChatNaoLidos(total);
+    // Repassar mapa atualizado ao Chat aberto
+    if(chatCallbackRef.current?.atualizarNaoLidos) {
+      chatCallbackRef.current.atualizarNaoLidos({...chatNaoLidosRef.current});
+    }
+  }, []);
+
+  // Helper: zerar naoLidos de um canal específico
+  const zerarNaoLidos = useCallback((canalId) => {
+    delete chatNaoLidosRef.current[canalId];
+    const total = Object.values(chatNaoLidosRef.current).reduce((a,b)=>a+b,0);
+    setChatNaoLidos(total);
+    if(total === 0) setChatMencao(false);
+    if(chatCallbackRef.current?.atualizarNaoLidos) {
+      chatCallbackRef.current.atualizarNaoLidos({...chatNaoLidosRef.current});
+    }
+  }, []);
+
+  // Helper: assinar um canal de mensagens (reutilizável para novos DMs também)
+  const assinarCanalGlobal = useCallback((c) => {
+    if(chatSubsRef.current[c.id]) return; // já assinado
+    const sub = chat.assinarCanal(c.id, (msg) => {
+      // Repassar para o Chat aberto (componente decide: exibir ou incrementar badge)
+      if(chatCallbackRef.current?.mensagem) {
+        chatCallbackRef.current.mensagem(c.id, msg);
+      }
+      if(msg.autor_id === userRef.current?.id) return; // não notifica próprias msgs
+      tocarSomChat();
+      const eMencao = (msg.mencoes||[]).includes(userRef.current?.id);
+      incrementarNaoLidos(c.id);
+      if(eMencao) setChatMencao(true);
+      piscarTitulo(eMencao
+        ? `🔔 ${msg.autor_nome} mencionou você!`
+        : `💬 ${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
+      const cNome = c.tipo==="direto"
+        ? (c.nome||"").split("↔").find(n=>n.trim()!==userRef.current?.nome)?.trim()||"Mensagem"
+        : "# "+c.nome;
+      if(eMencao){
+        setTimeout(tocarSomChat, 200);
+        notificarSistema(`🔔 ${msg.autor_nome} mencionou você em ${cNome}!`, msg.conteudo.slice(0,80), "intec-mencao-global", 12000);
+      } else {
+        notificarSistema(`💬 ${msg.autor_nome} — ${cNome}`, msg.conteudo.slice(0,80), "intec-chat-global-"+c.id, 8000);
+      }
+    });
+    chatSubsRef.current[c.id] = sub;
+  }, [incrementarNaoLidos]);
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
   useEffect(() => {
@@ -4383,50 +4445,33 @@ export default function App(){
     if(!user) return;
     const iniciarChatGlobal = async () => {
       try {
-        const canais = await chat.listarCanais(user.id);
-        canais.forEach(c=>{
-          if(chatSubsRef.current[c.id]) return;
-          const sub = chat.assinarCanal(c.id, (msg)=>{
-            // Repassar para o Chat aberto (se estiver no canal correto)
-            if(chatCallbackRef.current) {
-              Object.values(chatCallbackRef.current).forEach(fn=>{ try{ fn(c.id, msg); }catch(e){} });
-            }
-            if(msg.autor_id===user.id) return; // não notifica as próprias msgs
-            tocarSomChat();
-            const eMencao = (msg.mencoes||[]).includes(user.id);
-            // Badge diferenciado: menção = laranja, mensagem normal = vermelho
-            setChatNaoLidos(n=>n+1);
-            if(eMencao) setChatMencao(true); // badge laranja especial
-            piscarTitulo(eMencao
-              ? `🔔 ${msg.autor_nome} mencionou você!`
-              : `💬 ${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
-            const cNome = c.tipo==="direto"
-              ? (c.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"Mensagem"
-              : "# "+c.nome;
-            if(eMencao){
-              // Som diferente para menção — dois bips
-              setTimeout(tocarSomChat, 200);
-              notificarSistema(
-                `🔔 ${msg.autor_nome} mencionou você em ${cNome}!`,
-                msg.conteudo.slice(0,80), "intec-mencao-global", 12000
-              );
-            } else {
-              notificarSistema(
-                `💬 ${msg.autor_nome} — ${cNome}`,
-                msg.conteudo.slice(0,80), "intec-chat-global-"+c.id, 8000
-              );
-            }
-          });
-          chatSubsRef.current[c.id] = sub;
-        });
+        const canaisAtuais = await chat.listarCanais(user.id);
+        canaisAtuais.forEach(c => assinarCanalGlobal(c));
       } catch(e){ console.warn("Chat global:", e); }
     };
     iniciarChatGlobal();
+
+    // Escuta quando o usuário é adicionado a um novo canal/DM em tempo real
+    const subMembros = chat.assinarMembros(user.id, (novoCanal) => {
+      // Notificar o componente Chat aberto para adicionar o canal na lista
+      if(chatCallbackRef.current?.novoCanal) {
+        chatCallbackRef.current.novoCanal(novoCanal);
+      }
+      // Registrar assinatura de mensagens para esse novo canal
+      assinarCanalGlobal(novoCanal);
+      // Notificação visual
+      const quem = (novoCanal.nome||"").split("↔").find(n=>n.trim()!==user.nome)?.trim()||"alguém";
+      notificarSistema(`💬 ${quem} iniciou uma conversa com você`, "Clique no Chat para responder", "intec-dm-novo", 10000);
+    });
+    chatMembrosSub.current = subMembros;
+
     return ()=>{
       Object.values(chatSubsRef.current).forEach(s=>{ try{ chat.desassinarCanal(s); }catch(e){} });
       chatSubsRef.current = {};
+      if(chatMembrosSub.current) { try{ chat.desassinarCanal(chatMembrosSub.current); }catch(e){} }
+      chatMembrosSub.current = null;
     };
-  },[user?.id]);
+  },[user?.id, assinarCanalGlobal]);
 
   // ── Carregar dados do Supabase ao iniciar ──
   useEffect(() => {
@@ -5047,8 +5092,8 @@ export default function App(){
         {aba==="horas"     &&<AbaHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
         {aba==="agenda"    &&<AbaAgenda calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
         {aba==="chat"      &&<div style={{height:"calc(100vh - 140px)"}}><Chat usuario={user} usuarios={usuarios}
-          onNaoLidos={n=>{setChatNaoLidos(n);}}
-          onRegisterCallback={cb=>{ if(cb) chatCallbackRef.current.aba=cb; else delete chatCallbackRef.current.aba; }}/></div>}
+          onNaoLidos={n=>setChatNaoLidos(n)}
+          onRegisterCallback={handlers=>{ chatCallbackRef.current = handlers||null; }}/></div>}
         {aba==="config"    &&<Configuracoes usuarios={usuarios} onSalvarUsuarios={salvarUsuarios} usuarioAtual={user}/>}
       </main>
 
@@ -5077,8 +5122,8 @@ export default function App(){
 }}/>}
       <ChatFlutuante usuario={user} usuarios={usuarios}
         naoLidosGlobal={chatNaoLidos} temMencao={chatMencao}
-        onAbrir={()=>{setChatNaoLidos(0);setChatMencao(false);}}
-        onRegisterCallback={cb=>{ if(cb) chatCallbackRef.current.flutuante=cb; else delete chatCallbackRef.current.flutuante; }}/>
+        onAbrir={()=>{/* não zera — badges somem canal a canal quando lido */}}
+        onRegisterCallback={handlers=>{ chatCallbackRef.current = handlers||null; }}/>
     </div>
   );
 }

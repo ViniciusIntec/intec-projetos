@@ -582,4 +582,25 @@ export const chat = {
   desassinarCanal(canal) {
     try { supabase.removeChannel(canal); } catch(e) {}
   },
+
+  // Realtime: escuta quando o usuário é adicionado a um novo canal/DM
+  assinarMembros(userId, onNovoCanal) {
+    const nome = `chat-membros-${userId}-${Date.now()}`;
+    const sub = supabase.channel(nome);
+    sub.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_membros', filter: `usuario_id=eq.${userId}` },
+      async payload => {
+        if(!payload.new?.canal_id) return;
+        // Buscar detalhes do canal recém-criado
+        const { data } = await supabase
+          .from('chat_canais')
+          .select('*')
+          .eq('id', payload.new.canal_id)
+          .single();
+        if(data) onNovoCanal(data);
+      }
+    );
+    sub.subscribe();
+    return sub;
+  },
 };
