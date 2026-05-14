@@ -3794,7 +3794,7 @@ function Financeiro({projetos}){
 // ══════════════════════════════════════════════════════════════════════════════
 // CHAT INTEC — reescrito com realtime correto
 // ══════════════════════════════════════════════════════════════════════════════
-function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
+function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos, onRegisterCallback }) {
   const [canais,       setCanais]    = useState([]);
   const [canalAtivo,   setCanalAtivo]= useState(null);
   const [mensagens,    setMensagens] = useState([]);
@@ -3830,45 +3830,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
         setCanalAtivo(publicos[0]);
         canalAtivoRef.current = publicos[0];
       }
-      // Assinar todos os canais — sempre usando ref atualizado
-      todos.forEach(c=>{
-        if(assinaturasRef.current[c.id]) return;
-        const canalId = c.id;
-        const sub = chat.assinarCanal(canalId, (msg)=>{
-          // Usar sempre o ref — nunca closure stale
-          const canalAberto = canalAtivoRef.current?.id === canalId;
-          if(canalAberto){
-            // Mensagem no canal aberto — adiciona sem duplicar (verifica temp)
-            setMensagens(prev=>{
-              if(prev.find(m=>m.id===msg.id)) return prev; // já existe
-              // Remove eventual temp do mesmo autor com mesmo conteúdo
-              const semTemp = prev.filter(m=>!(m.id?.startsWith("temp-")&&m.autor_id===msg.autor_id&&m.conteudo===msg.conteudo));
-              return [...semTemp, msg];
-            });
-          } else if(msg.autor_id!==usuario.id){
-            setNaoLidos(prev=>({...prev,[canalId]:(prev[canalId]||0)+1}));
-          }
-          // Som + notificação para mensagens de outros
-          if(msg.autor_id!==usuario.id){
-            tocarSomChat();
-            piscarTitulo(`${msg.autor_nome}: ${msg.conteudo.slice(0,30)}`);
-            const cNome = c.tipo==="direto"
-              ? (c.nome||"").split("↔").find(n=>n.trim()!==usuario?.nome)?.trim()||c.nome||"Direto"
-              : "# "+c.nome;
-            notificarSistema(`💬 ${msg.autor_nome} em ${cNome}`,msg.conteudo.slice(0,80),"intec-chat-"+canalId,7000);
-            if((msg.mencoes||[]).includes(usuario.id)){
-              notificarSistema(`🔔 ${msg.autor_nome} mencionou você!`,msg.conteudo.slice(0,80),"intec-mencao",10000);
-            }
-          }
-        });
-        assinaturasRef.current[canalId] = sub;
-      });
     }).catch(console.error);
-
-    return ()=>{
-      Object.values(assinaturasRef.current).forEach(s=>chat.desassinarCanal(s));
-      assinaturasRef.current = {};
-    };
   },[usuario?.id]);
 
   // ── Carregar mensagens ao trocar de canal ────────────────────────────────
@@ -3941,14 +3903,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
       setCanais(prev=>prev.find(c=>c.id===canal.id)?prev:[...prev,canal]);
       setCanalAtivo(canal); canalAtivoRef.current=canal;
       setMostrarDM(false);
-      // Assinar o novo DM se ainda não assinou
-      if(!assinaturasRef.current[canal.id]){
-        const sub = chat.assinarCanal(canal.id,(msg)=>{
-          if(canalAtivoRef.current?.id===canal.id) setMensagens(prev=>[...prev,msg]);
-          else if(msg.autor_id!==usuario.id) setNaoLidos(prev=>({...prev,[canal.id]:(prev[canal.id]||0)+1}));
-        });
-        assinaturasRef.current[canal.id]=sub;
-      }
+      // DM novo — o sistema global vai assinar automaticamente na próxima vez que abrir
     }catch(e){console.error(e);}
   };
 
@@ -4275,7 +4230,7 @@ function Chat({ usuario, usuarios, flutuante=false, onFechar, onNaoLidos }) {
 }
 
 
-function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, temMencao=false, onAbrir }) {
+function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, temMencao=false, onAbrir, onRegisterCallback }) {
   const [aberto,   setAberto]  = useState(false);
   const [pulsando, setPulsando]= useState(false);
 
@@ -4302,7 +4257,8 @@ function ChatFlutuante({ usuario, usuarios, naoLidosGlobal=0, temMencao=false, o
         <div style={{position:"absolute",bottom:68,right:0,width:700,maxWidth:"96vw"}}>
           <Chat usuario={usuario} usuarios={usuarios} flutuante
             onFechar={()=>setAberto(false)}
-            onNaoLidos={()=>{}}/>
+            onNaoLidos={()=>{}}
+            onRegisterCallback={onRegisterCallback}/>
         </div>
       )}
       <button onClick={abrir}
@@ -4382,9 +4338,10 @@ export default function App(){
   const encerrarRef   = useRef(null);
   const projetosRef   = useRef([]);
   const userRef       = useRef(null);
-  const chatSubsRef   = useRef({});   // assinaturas globais do chat
-  const [chatNaoLidos, setChatNaoLidos] = useState(0); // badge global
-  const [chatMencao,   setChatMencao]   = useState(false); // foi mencionado
+  const chatSubsRef     = useRef({});   // assinaturas globais
+  const chatCallbackRef = useRef(null); // callback do Chat aberto (para msgs em tempo real)
+  const [chatNaoLidos, setChatNaoLidos] = useState(0);
+  const [chatMencao,   setChatMencao]   = useState(false);
 
   // Manter refs sempre atualizados (evita stale closure nos timers)
   useEffect(() => {
@@ -4402,7 +4359,11 @@ export default function App(){
         canais.forEach(c=>{
           if(chatSubsRef.current[c.id]) return;
           const sub = chat.assinarCanal(c.id, (msg)=>{
-            if(msg.autor_id===user.id) return; // ignora próprias mensagens
+            // Repassar para o Chat aberto (se estiver no canal correto)
+            if(chatCallbackRef.current) {
+              chatCallbackRef.current(c.id, msg);
+            }
+            if(msg.autor_id===user.id) return; // não notifica as próprias msgs
             tocarSomChat();
             const eMencao = (msg.mencoes||[]).includes(user.id);
             // Badge diferenciado: menção = laranja, mensagem normal = vermelho
@@ -4916,7 +4877,6 @@ export default function App(){
     ...(!isColab ? [{id:"financeiro", label:"Financeiro", icone:"💰"}] : []),
     {id:"horas",        label:"Horas",       icone:"⏱"},
     {id:"agenda",       label:"Agenda",      icone:"📅"},
-    {id:"chat",         label:"Chat",        icone:"💬"},
   ];
 
   // Abas no menu lateral
@@ -5085,7 +5045,10 @@ export default function App(){
     setModalH(null);
   }
 }}/>}
-      <ChatFlutuante usuario={user} usuarios={usuarios} naoLidosGlobal={chatNaoLidos} temMencao={chatMencao} onAbrir={()=>{setChatNaoLidos(0);setChatMencao(false);}}/>
+      <ChatFlutuante usuario={user} usuarios={usuarios}
+        naoLidosGlobal={chatNaoLidos} temMencao={chatMencao}
+        onAbrir={()=>{setChatNaoLidos(0);setChatMencao(false);}}
+        onRegisterCallback={cb=>{ chatCallbackRef.current=cb; }}/>
     </div>
   );
 }
