@@ -2857,10 +2857,23 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                 s("coresponsavel3", nomes[3]||"");
               };
               // Usar form.disciplinas como lista de membros: [{usuarioNome, disciplinas:[], obs:""}]
-              // Formato novo — detectar se é formato antigo (tem campo "id" sem "usuarioNome")
-              const membros = (form.disciplinas||[]).map(d=>
-                d.usuarioNome ? d : {usuarioNome:d.responsavel||"", disciplinas:d.id?[d.id]:[], obs:d.obs||""}
-              ).filter(m=>m.usuarioNome);
+              // Detectar formato: novo tem "usuarioNome", antigo tem "id"+"responsavel" (uma entrada por disciplina)
+              let membros;
+              const disc = form.disciplinas||[];
+              if(disc.length > 0 && disc[0].usuarioNome !== undefined) {
+                // Formato novo — usar direto
+                membros = disc.filter(m=>m.usuarioNome);
+              } else {
+                // Formato antigo — agrupar por responsavel
+                const mapa = {};
+                disc.forEach(d => {
+                  const nome = d.responsavel||"";
+                  if(!nome) return;
+                  if(!mapa[nome]) mapa[nome] = {usuarioNome:nome, disciplinas:[], obs:d.obs||""};
+                  if(d.id) mapa[nome].disciplinas.push(d.id);
+                });
+                membros = Object.values(mapa);
+              }
 
               const usuariosDisponiveis = usuarios.filter(u=>u.ativo);
               const adicionarMembro = (u) => {
@@ -3036,11 +3049,24 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
           <div style={{display:"flex",gap:10,justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
             {modo==="editar"&&<Btn variant="danger" small onClick={()=>onExcluir(projeto.id)}>🗑 Excluir</Btn>}
             <div style={{display:"flex",gap:10,marginLeft:"auto"}}><Btn variant="ghost" onClick={onClose}>Cancelar</Btn><Btn onClick={()=>{
-              // Sincronizar responsavel/coresponsavel a partir das disciplinas antes de salvar
-              const membros = (form.disciplinas||[]).filter(d=>d.usuarioNome);
-              const nomes = [...new Set(membros.map(m=>m.usuarioNome).filter(Boolean))];
+              // Converter disciplinas para formato novo se ainda estiver no antigo
+              let disciplinasFinais = form.disciplinas||[];
+              if(disciplinasFinais.length > 0 && disciplinasFinais[0].usuarioNome === undefined) {
+                // Formato antigo — agrupar por responsavel
+                const mapa = {};
+                disciplinasFinais.forEach(d => {
+                  const nome = d.responsavel||"";
+                  if(!nome) return;
+                  if(!mapa[nome]) mapa[nome] = {usuarioNome:nome, disciplinas:[], obs:d.obs||""};
+                  if(d.id) mapa[nome].disciplinas.push(d.id);
+                });
+                disciplinasFinais = Object.values(mapa);
+              }
+              // Sincronizar responsavel/coresponsavel a partir dos membros
+              const nomes = [...new Set(disciplinasFinais.map(m=>m.usuarioNome).filter(Boolean))];
               const formFinal = {
                 ...form,
+                disciplinas:    disciplinasFinais,
                 responsavel:    nomes[0]||"",
                 coresponsavel:  nomes[1]||"",
                 coresponsavel2: nomes[2]||"",
