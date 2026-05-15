@@ -3406,44 +3406,11 @@ function CardProjeto({p,onClick}){
 }
 
 function TabelaProjetos({projetos,onAbrirProjeto}){
-  const [ordem,    setOrdem]   = useState({col:"codigo",dir:"asc"});
-  const [filtCol,  setFiltCol] = useState(null);  // coluna com dropdown aberto
-  const [colFiltros,setColF]   = useState({});    // {col: Set de valores selecionados}
-
+  const [ordem, setOrdem] = useState({col:"codigo",dir:"asc"});
   const toggle = key => setOrdem(o=>o.col===key?{col:key,dir:o.dir==="asc"?"desc":"asc"}:{col:key,dir:"asc"});
 
-  // Valores únicos por coluna
-  const valoresCol = useMemo(()=>({
-    tipo:      [...new Set(projetos.map(p=>p.tipo).filter(Boolean))].sort(),
-    status:    [...new Set(projetos.map(p=>statusN(p.status)))].sort(),
-    responsavel:[...new Set(projetos.map(p=>p.responsavel).filter(Boolean))].sort(),
-  }),[projetos]);
-
-  // Filtro por coluna: null/vazio = mostrar tudo
-  const colFiltroAtivo = col => colFiltros[col]?.size > 0;
-
-  const toggleColVal = (col, val) => {
-    setColF(prev => {
-      const s = new Set(prev[col]||[]);
-      s.has(val) ? s.delete(val) : s.add(val);
-      return {...prev, [col]: s};
-    });
-  };
-
-  const limparCol = col => setColF(prev=>({...prev,[col]:new Set()}));
-
-  const selecionarTodos = (col) => setColF(prev=>({...prev,[col]:new Set(valoresCol[col]||[])}));
-
-  // Aplicar filtros de coluna
-  const filtradosCol = useMemo(()=> projetos.filter(p => {
-    if (colFiltroAtivo("tipo")       && !colFiltros.tipo?.has(p.tipo)) return false;
-    if (colFiltroAtivo("status")     && !colFiltros.status?.has(statusN(p.status))) return false;
-    if (colFiltroAtivo("responsavel")&& !colFiltros.responsavel?.has(p.responsavel)) return false;
-    return true;
-  }), [projetos, colFiltros]);
-
   const sorted = useMemo(()=>{
-    const arr=[...filtradosCol];
+    const arr=[...projetos];
     arr.sort((a,b)=>{
       let va,vb;
       switch(ordem.col){
@@ -3457,93 +3424,35 @@ function TabelaProjetos({projetos,onAbrirProjeto}){
     return arr;
   },[filtradosCol,ordem]);
 
-  // Fechar dropdown ao clicar fora
-  useEffect(()=>{
-    if (!filtCol) return;
-    const fn = () => setFiltCol(null);
-    setTimeout(()=>document.addEventListener("click", fn), 0);
-    return ()=>document.removeEventListener("click", fn);
-  },[filtCol]);
+  // Fechar dropdown ao clicar fora — removido (sem filtros de coluna)
 
-  const Th = ({col, label, filtavel=false}) => {
-    const ativo    = ordem.col===col;
-    const temFiltro= filtavel && colFiltroAtivo(col);
-    const aberto   = filtCol===col;
-    const vals     = valoresCol[col]||[];
-    const sel      = colFiltros[col]||new Set();
+  const Th = ({col, label}) => {
+    const ativo = ordem.col===col;
     return (
       <th style={{padding:"11px 14px",color:C.ciano,textAlign:"left",fontWeight:700,fontSize:11,
-        letterSpacing:0.5,background:ativo?"rgba(255,255,255,0.12)":temFiltro?"rgba(86,191,233,0.15)":"transparent",
-        position:"relative",userSelect:"none",whiteSpace:"nowrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          {/* Ordenação */}
-          <span onClick={()=>toggle(col)} style={{cursor:"pointer",flex:1,display:"flex",alignItems:"center",gap:3}}>
-            {label}
-            <span style={{fontSize:9,opacity:ativo?1:0.4,marginLeft:2}}>{ativo?(ordem.dir==="asc"?"▲":"▼"):"⇅"}</span>
-          </span>
-          {/* Botão filtro estilo Excel */}
-          {filtavel&&(
-            <button onClick={e=>{e.stopPropagation();setFiltCol(aberto?null:col);}}
-              style={{background:temFiltro?C.ciano:"rgba(255,255,255,0.15)",border:"none",borderRadius:3,
-                width:16,height:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
-                color:temFiltro?C.azulEscuro:C.ciano,fontSize:9,padding:0,flexShrink:0}}
-              title={`Filtrar por ${label}`}>
-              {temFiltro?"✓":"▾"}
-            </button>
-          )}
-        </div>
-        {/* Dropdown checklist */}
-        {filtavel&&aberto&&(
-          <div onClick={e=>e.stopPropagation()}
-            style={{position:"absolute",top:"100%",left:0,zIndex:999,background:C.branco,
-              borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",border:`1px solid ${C.cinzaCard}`,
-              minWidth:180,maxWidth:240,padding:8}}>
-            <div style={{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:`1px solid ${C.cinzaCard}`}}>
-              <button onClick={()=>selecionarTodos(col)} style={{flex:1,fontSize:10,background:C.cinzaFundo,border:`1px solid ${C.cinzaCard}`,borderRadius:4,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit"}}>Todos</button>
-              <button onClick={()=>limparCol(col)} style={{flex:1,fontSize:10,background:C.cinzaFundo,border:`1px solid ${C.cinzaCard}`,borderRadius:4,padding:"3px 6px",cursor:"pointer",fontFamily:"inherit"}}>Limpar</button>
-            </div>
-            <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
-              {vals.map(v=>(
-                <label key={v} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",borderRadius:5,cursor:"pointer",background:sel.has(v)?"#eff6ff":"transparent",fontSize:12}}>
-                  <input type="checkbox" checked={sel.has(v)} onChange={()=>toggleColVal(col,v)} style={{accentColor:C.azulMedio,width:13,height:13}}/>
-                  <span style={{color:C.cinzaEscuro,fontWeight:sel.has(v)?600:400}}>{v}</span>
-                </label>
-              ))}
-            </div>
-            {temFiltro&&<div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${C.cinzaCard}`,fontSize:10,color:C.cinzaClaro,textAlign:"center"}}>{sel.size} de {vals.length} selecionado(s)</div>}
-          </div>
-        )}
+        letterSpacing:0.5,background:ativo?"rgba(255,255,255,0.12)":"transparent",
+        userSelect:"none",whiteSpace:"nowrap"}}>
+        <span onClick={()=>toggle(col)} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+          {label}
+          <span style={{fontSize:9,opacity:ativo?1:0.4,marginLeft:2}}>{ativo?(ordem.dir==="asc"?"▲":"▼"):"⇅"}</span>
+        </span>
       </th>
     );
   };
 
   return(
     <div>
-      {/* Indicador de filtros ativos */}
-      {(colFiltroAtivo("tipo")||colFiltroAtivo("status")||colFiltroAtivo("responsavel"))&&(
-        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10,flexWrap:"wrap"}}>
-          <span style={{fontSize:11,color:C.cinzaClaro}}>Filtros ativos:</span>
-          {["tipo","status","responsavel"].filter(colFiltroAtivo).map(col=>(
-            <span key={col} style={{display:"flex",alignItems:"center",gap:4,background:"#eff6ff",border:`1px solid ${C.azulClaro}`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,color:C.azulMedio}}>
-              {col}: {[...colFiltros[col]].join(", ")}
-              <button onClick={()=>limparCol(col)} style={{background:"none",border:"none",color:C.azulMedio,cursor:"pointer",fontSize:12,padding:0,marginLeft:2}}>×</button>
-            </span>
-          ))}
-          <button onClick={()=>setColF({})} style={{fontSize:11,background:"none",border:`1px solid ${C.cinzaCard}`,borderRadius:4,padding:"2px 8px",cursor:"pointer",color:C.cinzaClaro,fontFamily:"inherit"}}>Limpar tudo</button>
-          <span style={{fontSize:11,color:C.cinzaClaro,marginLeft:"auto"}}>{sorted.length} projeto(s)</span>
-        </div>
-      )}
       <Card style={{padding:0,overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
           <thead>
             <tr style={{background:C.azulEscuro}}>
-              <Th col="codigo"              label="Código"/>
-              <Th col="tipo"               label="Tipo"         filtavel/>
-              <Th col="cliente"            label="Cliente"/>
-              <Th col="responsavel"        label="Responsável"  filtavel/>
-              <Th col="status"             label="Status"       filtavel/>
-              <Th col="dataEntregaPrevista" label="Entrega"/>
-              <Th col="financeiro"         label="Financeiro"/>
+              <Th col="codigo"               label="Código"/>
+              <Th col="tipo"                 label="Tipo"/>
+              <Th col="cliente"              label="Cliente"/>
+              <Th col="responsavel"          label="Responsável"/>
+              <Th col="status"               label="Status"/>
+              <Th col="dataEntregaPrevista"  label="Entrega"/>
+              <Th col="financeiro"           label="Financeiro"/>
             </tr>
           </thead>
           <tbody>
