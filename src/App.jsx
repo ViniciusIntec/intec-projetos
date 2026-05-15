@@ -3482,14 +3482,48 @@ function TabelaProjetos({projetos,onAbrirProjeto}){
   );
 }
 
-function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
-  const [busca,   setBusca] = useState("");
-  const [view,    setView]  = useState("grid");
+function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuarioAtual}){
+  const chave = `intec_filtros_projetos_${usuarioAtual?.id||"global"}`;
+
+  // Restaurar estado salvo
+  const estadoSalvo = useMemo(()=>{
+    try {
+      const raw = localStorage.getItem(chave);
+      if(!raw) return null;
+      const s = JSON.parse(raw);
+      return {
+        busca:      s.busca||"",
+        view:       s.view||"grid",
+        colFiltros: {
+          tipo:        s.tipo        ? new Set(s.tipo)        : null,
+          status:      s.status      ? new Set(s.status)      : null,
+          responsavel: s.responsavel ? new Set(s.responsavel) : null,
+          ano:         s.ano         ? new Set(s.ano)         : null,
+        }
+      };
+    } catch(e){ return null; }
+  },[chave]);
+
+  const [busca,      setBusca] = useState(estadoSalvo?.busca||"");
+  const [view,       setView]  = useState(estadoSalvo?.view||"grid");
   const [abrirFiltro, setAbrirFiltro] = useState(null);
-  // colFiltros: {col: Set | null}
-  // null = sem filtro ativo (mostrar tudo)
-  // Set  = conjunto de valores VISÍVEIS (marcados). Se desmarca todos, Set fica vazio = nada aparece
-  const [colFiltros, setColF] = useState({tipo:null,status:null,responsavel:null,ano:null});
+  const [colFiltros, setColF] = useState(
+    estadoSalvo?.colFiltros || {tipo:null,status:null,responsavel:null,ano:null}
+  );
+
+  // Salvar no localStorage sempre que filtros mudam
+  useEffect(()=>{
+    try {
+      const serial = {
+        busca, view,
+        tipo:        colFiltros.tipo        ? [...colFiltros.tipo]        : null,
+        status:      colFiltros.status      ? [...colFiltros.status]      : null,
+        responsavel: colFiltros.responsavel ? [...colFiltros.responsavel] : null,
+        ano:         colFiltros.ano         ? [...colFiltros.ano]         : null,
+      };
+      localStorage.setItem(chave, JSON.stringify(serial));
+    } catch(e){}
+  },[busca, view, colFiltros, chave]);
 
   // Fechar dropdown ao clicar fora
   useEffect(()=>{
@@ -5523,7 +5557,7 @@ export default function App(){
 
       <main style={{maxWidth:1400,margin:"0 auto",padding:"28px 24px"}}> 
         {aba==="dashboard" &&<Dashboard projetos={projetos} onAbrirProjeto={abrirP} drive={drive} onImportar={importar} usuarioAtual={user}/>}
-        {aba==="projetos"  &&<ListaProjetos projetos={projetos} onAbrirProjeto={abrirP} onNovoProjeto={novoP} usuarios={usuarios}/>}
+        {aba==="projetos"  &&<ListaProjetos projetos={projetos} onAbrirProjeto={abrirP} onNovoProjeto={novoP} usuarios={usuarios} usuarioAtual={user}/>}
         {aba==="financeiro"&&<Financeiro projetos={projetos}/>}
         {aba==="horas"     &&<AbaHoras registros={registros} setRegistros={setRegistros} usuarios={usuarios} projetos={projetos} usuarioAtual={user} calendario={calendario} onAbrirEncerramento={()=>setModalH("encerramento")}/>}
         {aba==="agenda"    &&<AbaAgenda calendario={calendario} usuarioAtual={user} registros={registros} usuarios={usuarios}/>}
