@@ -3597,9 +3597,6 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
             {/* Lista de valores */}
             <div style={{maxHeight:220,overflowY:"auto",display:"flex",flexDirection:"column",gap:1}}>
               {vals.map(v=>{
-                const marcado = !sel.has(v); // sem filtro = todos marcados; com filtro, marcado = NÃO está no set de excluídos
-                // Lógica: sel guarda os EXCLUÍDOS — desmarcado = excluído
-                // Revertendo: sel vazio = todos visíveis; sel com valores = esses valores estão OCULTOS
                 // marcado = está no Set (ou Set é null = todos marcados)
                 const marcado = sel===null ? true : sel.has(v);
                 return(
