@@ -3592,7 +3592,31 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
         <div style={{display:"flex",gap:4}}>{["grid","list"].map(v=><button key={v} onClick={()=>setView(v)} style={{background:view===v?C.azulMedio:"transparent",color:view===v?C.branco:C.cinzaClaro,border:`1.5px solid ${view===v?C.azulMedio:C.cinzaCard}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:16}}>{v==="grid"?"⊞":"☰"}</button>)}</div>
         <Btn onClick={onNovoProjeto}>+ Novo</Btn>
       </div>
-      <div style={{marginTop:8,fontSize:12,color:C.cinzaClaro}}>{filtrados.length} projeto(s)</div>
+      {/* Chips de filtros ativos + contador */}
+      <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:C.cinzaClaro}}>{filtrados.length} projeto(s)</span>
+        {fResp!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#e8f4fd",color:C.azulMedio,border:`1px solid ${C.azulMedio}40`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+          👤 {fResp}<button onClick={()=>setFR("todos")} style={{background:"none",border:"none",cursor:"pointer",color:C.azulMedio,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+        </span>}
+        {fStatus!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:(STATUS_CONFIG[fStatus]||{}).bg||"#f1f5f9",color:(STATUS_CONFIG[fStatus]||{}).cor||C.cinzaClaro,border:`1px solid ${(STATUS_CONFIG[fStatus]||{}).cor||C.cinzaCard}40`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+          {(STATUS_CONFIG[fStatus]||{}).icone} {fStatus}<button onClick={()=>setFS("todos")} style={{background:"none",border:"none",cursor:"pointer",color:"inherit",fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+        </span>}
+        {fTipo!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#f1f5f9",color:C.azulEscuro,border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+          {fTipo} – {TIPOS[fTipo]}<button onClick={()=>setFT("todos")} style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+        </span>}
+        {fAno!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#f1f5f9",color:C.azulEscuro,border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+          📅 {fAno}<button onClick={()=>setFA("todos")} style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+        </span>}
+        {busca&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#f1f5f9",color:C.azulEscuro,border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+          🔍 "{busca}"<button onClick={()=>setBusca("")} style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+        </span>}
+        {(fResp!=="todos"||fStatus!=="todos"||fTipo!=="todos"||fAno!=="todos"||busca)&&(
+          <button onClick={()=>{setFR("todos");setFS("todos");setFT("todos");setFA("todos");setBusca("");}}
+            style={{fontSize:11,background:"none",border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",cursor:"pointer",color:C.cinzaClaro,fontFamily:"inherit"}}>
+            Limpar tudo
+          </button>
+        )}
+      </div>
     </Card>
     {view==="grid"?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>{filtrados.map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}</div>:<TabelaProjetos projetos={filtrados} onAbrirProjeto={onAbrirProjeto}/>}
   </div>);
