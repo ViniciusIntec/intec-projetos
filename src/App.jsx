@@ -3494,6 +3494,7 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
       return {
         busca:      s.busca||"",
         view:       s.view||"grid",
+        ordem:      s.ordem||"codigo_asc",
         colFiltros: {
           tipo:        s.tipo        ? new Set(s.tipo)        : null,
           status:      s.status      ? new Set(s.status)      : null,
@@ -3506,6 +3507,7 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
 
   const [busca,      setBusca] = useState(estadoSalvo?.busca||"");
   const [view,       setView]  = useState(estadoSalvo?.view||"grid");
+  const [ordem,      setOrdem] = useState(estadoSalvo?.ordem||"codigo_asc");
   const [abrirFiltro, setAbrirFiltro] = useState(null);
   const [colFiltros, setColF] = useState(
     estadoSalvo?.colFiltros || {tipo:null,status:null,responsavel:null,ano:null}
@@ -3515,7 +3517,7 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
   useEffect(()=>{
     try {
       const serial = {
-        busca, view,
+        busca, view, ordem,
         tipo:        colFiltros.tipo        ? [...colFiltros.tipo]        : null,
         status:      colFiltros.status      ? [...colFiltros.status]      : null,
         responsavel: colFiltros.responsavel ? [...colFiltros.responsavel] : null,
@@ -3523,7 +3525,7 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
       };
       localStorage.setItem(chave, JSON.stringify(serial));
     } catch(e){}
-  },[busca, view, colFiltros, chave]);
+  },[busca, view, ordem, colFiltros, chave]);
 
   // Fechar dropdown ao clicar fora
   useEffect(()=>{
@@ -3586,6 +3588,34 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
       return true;
     });
   },[projetos,colFiltros,busca]);
+
+  // Aplicar ordenação nos filtrados
+  const filtradosOrdenados = useMemo(()=>{
+    const arr = [...filtrados];
+    const [col, dir] = ordem.split("_");
+    const mult = dir==="desc" ? -1 : 1;
+    arr.sort((a,b)=>{
+      let va, vb;
+      if(col==="codigo"){
+        // Ordenar numericamente pelo número no código (ex: 01.CB.0126 → 1)
+        va = parseInt((a.codigo||"").replace(/\D/g,""))||0;
+        vb = parseInt((b.codigo||"").replace(/\D/g,""))||0;
+      } else if(col==="cliente"){
+        va = (a.cliente||"").toLowerCase();
+        vb = (b.cliente||"").toLowerCase();
+        return mult * va.localeCompare(vb);
+      } else if(col==="ano"){
+        va = Number(a.ano)||0;
+        vb = Number(b.ano)||0;
+      } else if(col==="status"){
+        va = statusN(a.status)||"";
+        vb = statusN(b.status)||"";
+        return mult * va.localeCompare(vb);
+      }
+      return mult * (va - vb);
+    });
+    return arr;
+  },[filtrados, ordem]);
 
   // Componente dropdown checklist reutilizável
   const FiltroBtn = ({col, label, icone}) => {
@@ -3701,6 +3731,18 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
         <FiltroBtn col="status"      label="Status"        icone="📊"/>
         <FiltroBtn col="responsavel" label="Responsável"   icone="👤"/>
         <FiltroBtn col="ano"         label="Ano"           icone="📅"/>
+        {/* Ordenação */}
+        <select value={ordem} onChange={e=>setOrdem(e.target.value)}
+          style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"7px 12px",
+            fontSize:13,fontFamily:"inherit",cursor:"pointer",background:"white",color:C.cinzaEscuro}}>
+          <option value="codigo_asc">🔢 Código ↑</option>
+          <option value="codigo_desc">🔢 Código ↓</option>
+          <option value="cliente_asc">🔤 Nome A→Z</option>
+          <option value="cliente_desc">🔤 Nome Z→A</option>
+          <option value="ano_desc">📅 Mais recente</option>
+          <option value="ano_asc">📅 Mais antigo</option>
+          <option value="status_asc">📊 Status A→Z</option>
+        </select>
         {temFiltroAtivo&&(
           <button onClick={()=>{limparTudo();setBusca("");}}
             style={{fontSize:12,background:"#fef2f2",border:`1px solid #fecaca`,color:C.vermelho,
@@ -3709,7 +3751,7 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
           </button>
         )}
         <span style={{fontSize:12,color:C.cinzaClaro,marginLeft:"auto",fontWeight:600}}>
-          {filtrados.length} de {[...new Set(projetos.map(p=>p.id))].length} projeto(s)
+          {filtradosOrdenados.length} de {[...new Set(projetos.map(p=>p.id))].length} projeto(s)
         </span>
       </div>
       {/* Chips de filtros ativos */}
@@ -3746,9 +3788,9 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[],usuari
     </Card>
     {view==="grid"
       ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
-          {filtrados.map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}
+          {filtradosOrdenados.map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}
         </div>
-      : <TabelaProjetos projetos={filtrados} onAbrirProjeto={onAbrirProjeto}/>}
+      : <TabelaProjetos projetos={filtradosOrdenados} onAbrirProjeto={onAbrirProjeto}/>}
   </div>);
 }
 
