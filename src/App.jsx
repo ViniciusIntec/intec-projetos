@@ -4054,6 +4054,17 @@ function Chat({
   const [confirmDelDM, setConfirmDelDM] = useState(null);
   const [sugestoes,    setSugestoes]    = useState([]);
   const [sugestaoIdx,  setSugestaoIdx]  = useState(0);
+  // Arquivo anexado
+  const [arquivoAnexo, setArquivoAnexo] = useState(null); // {file, preview, tipo}
+  const [enviandoArq,  setEnviandoArq]  = useState(false);
+  const [erroArq,      setErroArq]      = useState("");
+  // Gravação de áudio
+  const [gravando,     setGravando]     = useState(false);
+  const [tempoGrav,    setTempoGrav]    = useState(0);
+  const mediaRecRef  = useRef(null);
+  const chunksRef    = useRef([]);
+  const timerGravRef = useRef(null);
+  const fileInputRef = useRef(null);
   const isGestor = ["admin","gestor"].includes(usuario?.perfil);
   const mensagensRef = useRef(null);
   const inputRef     = useRef(null);
@@ -4093,12 +4104,72 @@ function Chat({
   };
 
   const enviar = () => {
-    if(!texto.trim()||!canalAtivo||!usuario) return;
+    if((!texto.trim() && !arquivoAnexo)||!canalAtivo||!usuario) return;
+    if(arquivoAnexo) { enviarComArquivo(); return; }
     const mencoes = usuarios.filter(u=>texto.includes(`@${u.nome}`)).map(u=>u.id);
     onEnviar(canalAtivo.id, texto.trim(), mencoes);
     setTexto("");
     inputRef.current?.focus();
   };
+
+  const enviarComArquivo = async () => {
+    if(!arquivoAnexo||!canalAtivo||!usuario) return;
+    setEnviandoArq(true); setErroArq("");
+    try {
+      const arqInfo = await chat.uploadArquivo(arquivoAnexo.file, usuario.id);
+      const mencoes = usuarios.filter(u=>texto.includes(`@${u.nome}`)).map(u=>u.id);
+      onEnviar(canalAtivo.id, texto.trim()||"", mencoes, arqInfo);
+      setTexto(""); setArquivoAnexo(null);
+      inputRef.current?.focus();
+    } catch(e) {
+      setErroArq(e.message||"Erro ao enviar arquivo");
+    } finally { setEnviandoArq(false); }
+  };
+
+  const selecionarArquivo = (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setErroArq("");
+    const tipoImg = file.type.startsWith('image/');
+    const tipoAud = file.type.startsWith('audio/');
+    const limite  = tipoImg ? 2*1024*1024 : 5*1024*1024;
+    if(file.size > limite) {
+      setErroArq(`Arquivo muito grande. Limite: ${tipoImg?'2MB':'5MB'}`);
+      return;
+    }
+    const preview = tipoImg ? URL.createObjectURL(file) : null;
+    setArquivoAnexo({file, preview, tipo: tipoAud?'audio':tipoImg?'imagem':'documento'});
+    e.target.value = "";
+  };
+
+  const iniciarGravacao = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+      const rec = new MediaRecorder(stream, {mimeType:'audio/webm'});
+      chunksRef.current = [];
+      rec.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(t=>t.stop());
+        const blob = new Blob(chunksRef.current, {type:'audio/webm'});
+        if(blob.size > 5*1024*1024) { setErroArq("Áudio muito longo (máx ~5min)"); return; }
+        const file = new File([blob], `audio-${Date.now()}.webm`, {type:'audio/webm'});
+        const preview = URL.createObjectURL(blob);
+        setArquivoAnexo({file, preview, tipo:'audio'});
+      };
+      rec.start();
+      mediaRecRef.current = rec;
+      setGravando(true); setTempoGrav(0);
+      timerGravRef.current = setInterval(()=>setTempoGrav(t=>t+1), 1000);
+    } catch(e) { setErroArq("Microfone não disponível"); }
+  };
+
+  const pararGravacao = () => {
+    mediaRecRef.current?.stop();
+    clearInterval(timerGravRef.current);
+    setGravando(false);
+  };
+
+  const fmtTempo = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
 
   const iniciarDM = async(outro) => {
     await onIniciarDM(outro);
@@ -4257,8 +4328,43 @@ function Chat({
                       </div>
                     )}
                     <div style={{fontSize:13,color:C.cinzaEscuro,lineHeight:1.5,wordBreak:"break-word"}}>
-                      {renderTexto(msg.conteudo)}
+                      {msg.conteudo&&renderTexto(msg.conteudo)}
                       {isTemp&&<span style={{fontSize:10,color:C.cinzaClaro,marginLeft:4}}>⏳</span>}
+                      {/* Arquivo */}
+                      {msg.arquivo_url&&(()=>{
+                        const tipo=msg.arquivo_tipo;
+                        if(tipo==='imagem') return(
+                          <a href={msg.arquivo_url} target="_blank" rel="noreferrer">
+                            <img src={msg.arquivo_url} alt={msg.arquivo_nome||"imagem"}
+                              style={{maxWidth:240,maxHeight:180,borderRadius:8,marginTop:msg.conteudo?6:0,
+                                display:"block",cursor:"pointer",border:`1px solid ${C.cinzaCard}`}}/>
+                          </a>
+                        );
+                        if(tipo==='audio') return(
+                          <div style={{marginTop:msg.conteudo?6:0}}>
+                            <audio controls src={msg.arquivo_url}
+                              style={{height:36,width:220,borderRadius:20,outline:"none"}}/>
+                          </div>
+                        );
+                        const kb=msg.arquivo_tamanho?`${(msg.arquivo_tamanho/1024).toFixed(0)} KB`:'';
+                        return(
+                          <a href={msg.arquivo_url} target="_blank" rel="noreferrer"
+                            style={{display:"inline-flex",alignItems:"center",gap:8,
+                              marginTop:msg.conteudo?6:0,padding:"8px 12px",
+                              background:"#f1f5f9",borderRadius:8,border:`1px solid ${C.cinzaCard}`,
+                              textDecoration:"none",maxWidth:220}}>
+                            <span style={{fontSize:20}}>📎</span>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:600,color:C.azulMedio,
+                                overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {msg.arquivo_nome||"arquivo"}
+                              </div>
+                              {kb&&<div style={{fontSize:10,color:C.cinzaClaro}}>{kb}</div>}
+                            </div>
+                            <span style={{fontSize:14,color:C.cinzaClaro,flexShrink:0}}>↓</span>
+                          </a>
+                        );
+                      })()}
                     </div>
                   </div>
                   {(ehMeu||isGestor)&&!isTemp&&(
@@ -4291,8 +4397,67 @@ function Chat({
                 ))}
               </div>
             )}
-            <div style={{display:"flex",gap:6,alignItems:"flex-end",background:C.cinzaFundo,borderRadius:10,padding:"5px 8px",border:`1px solid ${C.cinzaCard}`}}>
+            {/* Preview do arquivo selecionado */}
+            {arquivoAnexo&&(
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",
+                background:"#eff6ff",borderRadius:8,border:`1px solid ${C.azulMedio}40`,marginBottom:4}}>
+                {arquivoAnexo.tipo==='imagem'&&(
+                  <img src={arquivoAnexo.preview} alt="" style={{width:40,height:40,objectFit:"cover",borderRadius:6,border:`1px solid ${C.cinzaCard}`}}/>
+                )}
+                {arquivoAnexo.tipo==='audio'&&(
+                  <audio controls src={arquivoAnexo.preview} style={{height:30,width:160,borderRadius:16}}/>
+                )}
+                {arquivoAnexo.tipo==='documento'&&<span style={{fontSize:22}}>📎</span>}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:600,color:C.azulMedio,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {arquivoAnexo.file.name}
+                  </div>
+                  <div style={{fontSize:10,color:C.cinzaClaro}}>
+                    {(arquivoAnexo.file.size/1024).toFixed(0)} KB
+                  </div>
+                </div>
+                <button onClick={()=>setArquivoAnexo(null)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:16,padding:0}}>✕</button>
+              </div>
+            )}
+            {/* Erro de arquivo */}
+            {erroArq&&(
+              <div style={{fontSize:11,color:C.vermelho,background:"#fef2f2",padding:"4px 10px",
+                borderRadius:6,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                ⚠ {erroArq}
+                <button onClick={()=>setErroArq("")} style={{background:"none",border:"none",cursor:"pointer",color:C.vermelho,fontSize:12,marginLeft:"auto"}}>✕</button>
+              </div>
+            )}
+            <div style={{display:"flex",gap:6,alignItems:"flex-end",background:C.cinzaFundo,borderRadius:10,padding:"5px 8px",border:`1px solid ${gravando?C.vermelho:C.cinzaCard}`,transition:"border-color 0.2s"}}>
               <button onClick={()=>setEmoji(e=>!e)} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:C.cinzaClaro,padding:"0 2px",flexShrink:0}}>😊</button>
+              {/* Botão de anexar arquivo */}
+              <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onChange={selecionarArquivo} style={{display:"none"}}/>
+              <button onClick={()=>fileInputRef.current?.click()}
+                title="Anexar arquivo (imagens até 2MB, docs até 5MB)"
+                style={{background:"none",border:"none",fontSize:16,cursor:"pointer",
+                  color:arquivoAnexo?C.azulMedio:C.cinzaClaro,padding:"0 2px",flexShrink:0}}>
+                📎
+              </button>
+              {/* Botão de gravar áudio */}
+              {!gravando
+                ? <button onClick={iniciarGravacao} title="Gravar áudio"
+                    style={{background:"none",border:"none",fontSize:16,cursor:"pointer",color:C.cinzaClaro,padding:"0 2px",flexShrink:0}}>
+                    🎤
+                  </button>
+                : <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:C.vermelho,
+                      animation:"gravPulse 1s infinite",flexShrink:0}}/>
+                    <span style={{fontSize:11,color:C.vermelho,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>
+                      {fmtTempo(tempoGrav)}
+                    </span>
+                    <button onClick={pararGravacao} title="Parar gravação"
+                      style={{background:C.vermelho,border:"none",borderRadius:6,padding:"2px 8px",
+                        cursor:"pointer",color:"white",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+                      ⏹ Parar
+                    </button>
+                  </div>
+              }
               {/* Autocomplete de menções */}
               {sugestoes.length>0&&(
                 <div style={{position:"absolute",bottom:"100%",left:40,background:C.branco,border:`1px solid ${C.cinzaCard}`,borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,0.12)",minWidth:160,overflow:"hidden",zIndex:20}}>
@@ -4313,7 +4478,6 @@ function Chat({
                 onChange={e=>{
                   const val = e.target.value;
                   setTexto(val);
-                  // Detectar @ para autocomplete
                   const cursor = e.target.selectionStart;
                   const atPos  = val.lastIndexOf("@", cursor-1);
                   if(atPos>=0 && (atPos===0||val[atPos-1]===" "||val[atPos-1]==="\n")){
@@ -4321,9 +4485,7 @@ function Chat({
                     const matches = usuarios.filter(u=>u.ativo&&u.id!==usuario?.id&&u.nome.toLowerCase().startsWith(query));
                     setSugestoes(matches.slice(0,5));
                     setSugestaoIdx(0);
-                  } else {
-                    setSugestoes([]);
-                  }
+                  } else { setSugestoes([]); }
                 }}
                 onKeyDown={e=>{
                   if(sugestoes.length>0){
@@ -4334,16 +4496,23 @@ function Chat({
                   }
                   if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();enviar();}
                 }}
-                placeholder={`Mensagem${canalAtivo.tipo==="canal"?" em #"+canalAtivo.nome:""}... (Enter p/ enviar)`}
+                disabled={gravando}
+                placeholder={gravando?"🎤 Gravando áudio...":`Mensagem${canalAtivo.tipo==="canal"?" em #"+canalAtivo.nome:""}... (Enter p/ enviar)`}
                 rows={1}
                 style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",fontSize:13,fontFamily:"inherit",color:C.cinzaEscuro,maxHeight:80,lineHeight:1.5,padding:"2px 0"}}
                 onInput={e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,80)+"px";}}/>
-              <button onClick={enviar} disabled={!texto.trim()}
-                style={{background:texto.trim()?C.azulMedio:"#e2e8f0",color:texto.trim()?C.branco:"#94a3b8",border:"none",borderRadius:7,padding:"5px 12px",cursor:texto.trim()?"pointer":"default",fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>
-                ➤
+              <button onClick={enviar}
+                disabled={(!texto.trim()&&!arquivoAnexo)||enviandoArq}
+                style={{background:(texto.trim()||arquivoAnexo)&&!enviandoArq?C.azulMedio:"#e2e8f0",
+                  color:(texto.trim()||arquivoAnexo)&&!enviandoArq?C.branco:"#94a3b8",
+                  border:"none",borderRadius:7,padding:"5px 12px",
+                  cursor:(texto.trim()||arquivoAnexo)&&!enviandoArq?"pointer":"default",
+                  fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>
+                {enviandoArq?"⏳":"➤"}
               </button>
             </div>
             <div style={{fontSize:10,color:C.cinzaClaro,marginTop:3,paddingLeft:4}}>Use @Nome para mencionar · Shift+Enter para nova linha</div>
+            <style>{`@keyframes gravPulse{0%,100%{opacity:1}50%{opacity:0.2}}`}</style>
           </div>
         )}
       </div>
@@ -4580,17 +4749,22 @@ export default function App(){
   }, []);
 
   // ── Helper: enviar mensagem (optimistic) ─────────────────────────────────
-  const chatEnviar = useCallback(async (canalId, texto, mencoes) => {
+  const chatEnviar = useCallback(async (canalId, texto, mencoes, arquivo=null) => {
     const tempId = "temp-"+Date.now();
     const tempMsg = {
       id:tempId, canal_id:canalId,
       autor_id:userRef.current?.id, autor_nome:userRef.current?.nome,
       autor_cor:userRef.current?.cor||C.azulMedio,
-      conteudo:texto, mencoes, created_at:new Date().toISOString(),
+      conteudo:texto, mencoes,
+      arquivo_url: arquivo?.url||null,
+      arquivo_nome: arquivo?.nome||null,
+      arquivo_tipo: arquivo?.tipo||null,
+      arquivo_tamanho: arquivo?.tamanho||null,
+      created_at:new Date().toISOString(),
     };
     setChatMensagens(prev=>[...prev,tempMsg]);
     try {
-      const salva = await chat.enviarMensagem(canalId, userRef.current.id, userRef.current.nome, userRef.current.cor||C.azulMedio, texto, mencoes);
+      const salva = await chat.enviarMensagem(canalId, userRef.current.id, userRef.current.nome, userRef.current.cor||C.azulMedio, texto, mencoes, arquivo);
       setChatMensagens(prev=>prev.map(m=>m.id===tempId?salva:m));
     } catch(e){
       setChatMensagens(prev=>prev.filter(m=>m.id!==tempId));

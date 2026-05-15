@@ -574,17 +574,48 @@ export const chat = {
   },
 
   // Envia mensagem e faz broadcast para todos no canal
-  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[]) {
+  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[], arquivo=null) {
     const { data, error } = await supabase
       .from('chat_mensagens')
       .insert({ canal_id: canalId, autor_id: autorId, autor_nome: autorNome,
-                autor_cor: autorCor, conteudo, mencoes })
+                autor_cor: autorCor, conteudo, mencoes,
+                arquivo_url: arquivo?.url||null,
+                arquivo_nome: arquivo?.nome||null,
+                arquivo_tipo: arquivo?.tipo||null,
+                arquivo_tamanho: arquivo?.tamanho||null })
       .select().single();
     if(error) throw error;
-    // Broadcast para todos os assinantes deste canal específico
     const ch = supabase.channel(`chat-msgs-${canalId}`);
     ch.send({ type: 'broadcast', event: 'nova_msg', payload: data }).catch(()=>{});
     return data;
+  },
+
+  // Upload de arquivo para Supabase Storage
+  async uploadArquivo(arquivo, usuarioId) {
+    const LIMITES = { imagem: 2*1024*1024, documento: 5*1024*1024 };
+    const tipoImagem = arquivo.type.startsWith('image/');
+    const tipoAudio  = arquivo.type.startsWith('audio/');
+    const limite = tipoImagem ? LIMITES.imagem : LIMITES.documento;
+
+    if(arquivo.size > limite) {
+      const limiteMB = tipoImagem ? '2MB' : '5MB';
+      throw new Error(`Arquivo muito grande. Limite: ${limiteMB} para ${tipoImagem?'imagens':'documentos'}.`);
+    }
+
+    const ext  = arquivo.name.split('.').pop() || 'bin';
+    const path = `${usuarioId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from('chat-arquivos').upload(path, arquivo, {
+      cacheControl: '3600', upsert: false, contentType: arquivo.type,
+    });
+    if(error) throw error;
+
+    const { data: { publicUrl } } = supabase.storage.from('chat-arquivos').getPublicUrl(path);
+    return {
+      url: publicUrl,
+      nome: arquivo.name,
+      tipo: tipoAudio ? 'audio' : tipoImagem ? 'imagem' : 'documento',
+      tamanho: arquivo.size,
+    };
   },
 
   // Realtime: escuta quando o usuário é adicionado a um novo canal/DM
