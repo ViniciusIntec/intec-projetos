@@ -3422,7 +3422,7 @@ function TabelaProjetos({projetos,onAbrirProjeto}){
       return (ordem.dir==="asc"?1:-1)*String(va).localeCompare(String(vb),"pt-BR",{numeric:true,sensitivity:"base"});
     });
     return arr;
-  },[filtradosCol,ordem]);
+  },[projetos,ordem]);
 
   // Fechar dropdown ao clicar fora — removido (sem filtros de coluna)
 
