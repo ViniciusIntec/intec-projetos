@@ -627,6 +627,18 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     </>)}
 
     <Inp label="Hora de início" type="time" value={hi} onChange={setHi}/>
+    {/* Aviso se estiver fora do expediente */}
+    {(()=>{
+      const fim = fimExpediente(usuarioAtual?.expediente);
+      if(fim && hi >= fim) return(
+        <div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e",display:"flex",gap:8,alignItems:"center"}}>
+          <span style={{fontSize:16}}>⏰</span>
+          <div>
+            <strong>Fora do expediente</strong> — esta sessão será registrada como <strong>hora extra</strong> e não será encerrada automaticamente.
+          </div>
+        </div>
+      );
+    })()}
     <Inp label="O que você vai fazer? *" value={obs} onChange={setObs}
       placeholder={tipoSessao==="projeto"?"Ex: Modelagem estrutural no Eberick...":"Ex: Orçamento para cliente X..."} required/>
     {!obs.trim()&&<span style={{fontSize:11,color:C.vermelho,fontSize:11}}>⚠ Descrição obrigatória</span>}
@@ -5200,10 +5212,13 @@ export default function App(){
       const fim   = fimExpediente(user.expediente);
       if(!fim || agora < fim) return;
 
-      // Usa ref para pegar registros atuais (não o valor capturado no closure)
       const regsAtuais = registrosRef.current;
       const aberta = regsAtuais.find(r => r.usuarioId===user.id && !r.horaFim);
       if(!aberta) return;
+
+      // NÃO encerrar se a sessão começou DEPOIS do fim do expediente (é hora extra)
+      // Também não encerrar se já foi explicitamente marcada como hora extra
+      if(aberta.horaInicio >= fim || aberta.horaExtra) return;
 
       const [fh,fm] = fim.split(":").map(Number);
       const [ah,am] = agora.split(":").map(Number);
@@ -5246,7 +5261,6 @@ export default function App(){
   // ── INICIAR SESSÃO ─────────────────────────────────────────────────────────
   // Bug fix: bloqueia início se já existe sessão aberta do mesmo usuário
   const iniciar = async (projetoId, hi, obsInicio, categoriaAdmin=null) => {
-    // Bug 2: verificar se já existe sessão aberta — não permitir duplicata
     const jaAberta = registrosRef.current.find(r => r.usuarioId===user.id && !r.horaFim);
     if (jaAberta) {
       console.warn("Já existe sessão aberta, ignorando iniciar()");
@@ -5255,6 +5269,9 @@ export default function App(){
     }
     const dataHoje = new Date().toISOString().slice(0,10);
     const uExp = usuarios.find(u2=>u2.id===user.id)?.expediente;
+    const fim  = fimExpediente(uExp);
+    // Sessão iniciada após o fim do expediente = hora extra automaticamente
+    const eHoraExtra = fim && hi >= fim;
     const nova = {
       id: Date.now().toString(),
       usuarioId:      user.id,
@@ -5269,6 +5286,7 @@ export default function App(){
       obsInicio:      obsInicio||"",
       obsFim:         "",
       obs:            obsInicio||"",
+      horaExtra:      eHoraExtra || false,
     };
     // Atualizar estado e ref imediatamente — evita race condition
     setRegistros(prev => { const novo = [...prev, nova]; registrosRef.current = novo; return novo; });
