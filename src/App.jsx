@@ -3485,19 +3485,21 @@ function TabelaProjetos({projetos,onAbrirProjeto}){
 function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
   const [busca,   setBusca] = useState("");
   const [view,    setView]  = useState("grid");
-  const [abrirFiltro, setAbrirFiltro] = useState(null); // qual dropdown está aberto
-  // colFiltros: {col: Set} — Set vazio = sem filtro (mostrar tudo)
-  const [colFiltros, setColF] = useState({tipo:new Set(),status:new Set(),responsavel:new Set(),ano:new Set()});
+  const [abrirFiltro, setAbrirFiltro] = useState(null);
+  // colFiltros: {col: Set | null}
+  // null = sem filtro ativo (mostrar tudo)
+  // Set  = conjunto de valores VISÍVEIS (marcados). Se desmarca todos, Set fica vazio = nada aparece
+  const [colFiltros, setColF] = useState({tipo:null,status:null,responsavel:null,ano:null});
 
   // Fechar dropdown ao clicar fora
   useEffect(()=>{
     if(!abrirFiltro) return;
-    const fn = e => { setAbrirFiltro(null); };
+    const fn = () => setAbrirFiltro(null);
     setTimeout(()=>document.addEventListener("click",fn),0);
     return ()=>document.removeEventListener("click",fn);
   },[abrirFiltro]);
 
-  // Valores únicos por coluna (dos projetos originais, sem deduplicação)
+  // Valores únicos por coluna
   const valoresCol = useMemo(()=>{
     const uniq = projetos.filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i);
     return {
@@ -3508,23 +3510,28 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
     };
   },[projetos]);
 
-  const ativo = col => colFiltros[col]?.size > 0;
+  // filtro ativo = Set não-null (mesmo que vazio)
+  const ativo = col => colFiltros[col] !== null;
 
+  // Marcar/desmarcar um valor individual
+  // Se o filtro ainda era null, inicializa com TODOS marcados, depois remove o clicado
   const toggleVal = (col, val) => {
     setColF(prev=>{
-      const s = new Set(prev[col]||[]);
-      s.has(val) ? s.delete(val) : s.add(val);
-      return {...prev,[col]:s};
+      const base = prev[col] !== null ? new Set(prev[col]) : new Set(valoresCol[col]);
+      base.has(val) ? base.delete(val) : base.add(val);
+      return {...prev,[col]:base};
     });
   };
 
-  const selecionarTodos = col => setColF(prev=>({...prev,[col]:new Set()}));
-  const desmarcarTodos  = col => setColF(prev=>({...prev,[col]:new Set(valoresCol[col])}));
-  const limparTudo = () => setColF({tipo:new Set(),status:new Set(),responsavel:new Set(),ano:new Set()});
+  // Marcar todos = desativar filtro (null = todos visíveis)
+  const selecionarTodos = col => setColF(prev=>({...prev,[col]:null}));
+  // Desmarcar todos = Set vazio (nada visível)
+  const desmarcarTodos  = col => setColF(prev=>({...prev,[col]:new Set()}));
+  const limparTudo = () => setColF({tipo:null,status:null,responsavel:null,ano:null});
 
-  const temFiltroAtivo = Object.values(colFiltros).some(s=>s.size>0) || !!busca;
+  const temFiltroAtivo = Object.values(colFiltros).some(v=>v!==null) || !!busca;
 
-  // Aplicar filtros
+  // Aplicar filtros — null = sem restrição; Set = só mostra quem está dentro
   const filtrados = useMemo(()=>{
     const vistos = new Set();
     return projetos.filter(p=>{
@@ -3549,8 +3556,8 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
   // Componente dropdown checklist reutilizável
   const FiltroBtn = ({col, label, icone}) => {
     const vals = valoresCol[col]||[];
-    const sel  = colFiltros[col]||new Set();
-    const temF = sel.size > 0;
+    const sel  = colFiltros[col]; // null = todos marcados; Set = só os do Set são visíveis
+    const temF = sel !== null;    // filtro ativo apenas se não for null
     const aberto = abrirFiltro === col;
     // Quantos estão desmarcados (excluídos)
     const excluidos = temF ? vals.length - (vals.length - sel.size) : 0;
@@ -3565,7 +3572,7 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
           {icone} {label}
           {temF&&<span style={{background:C.azulMedio,color:"white",borderRadius:10,
             fontSize:10,fontWeight:800,padding:"1px 5px",marginLeft:2}}>
-            {vals.length - sel.size}/{vals.length}
+            {sel===null?vals.length:sel.size}/{vals.length}
           </span>}
           <span style={{fontSize:10,opacity:0.5}}>{aberto?"▲":"▼"}</span>
         </button>
@@ -3593,16 +3600,17 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
                 const marcado = !sel.has(v); // sem filtro = todos marcados; com filtro, marcado = NÃO está no set de excluídos
                 // Lógica: sel guarda os EXCLUÍDOS — desmarcado = excluído
                 // Revertendo: sel vazio = todos visíveis; sel com valores = esses valores estão OCULTOS
-                const visivel = sel.size===0 || !sel.has(v);
+                // marcado = está no Set (ou Set é null = todos marcados)
+                const marcado = sel===null ? true : sel.has(v);
                 return(
                   <label key={v} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",
-                    borderRadius:6,cursor:"pointer",background:visivel?"white":"#fef2f2",
+                    borderRadius:6,cursor:"pointer",background:marcado?"white":"#fef2f2",
                     transition:"background 0.1s"}}>
-                    <input type="checkbox" checked={visivel}
+                    <input type="checkbox" checked={marcado}
                       onChange={()=>toggleVal(col,v)}
                       style={{accentColor:C.azulMedio,width:14,height:14,cursor:"pointer"}}/>
-                    <span style={{fontSize:12,color:visivel?C.cinzaEscuro:C.cinzaClaro,
-                      fontWeight:visivel?500:400,flex:1,textDecoration:visivel?"none":"line-through"}}>
+                    <span style={{fontSize:12,color:marcado?C.cinzaEscuro:C.cinzaClaro,
+                      fontWeight:marcado?500:400,flex:1,textDecoration:marcado?"none":"line-through"}}>
                       {col==="status"
                         ? <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                             <span style={{width:8,height:8,borderRadius:"50%",
@@ -3625,7 +3633,11 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
             </div>
             <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${C.cinzaCard}`,
               fontSize:10,color:C.cinzaClaro,textAlign:"center"}}>
-              {sel.size>0?`${sel.size} oculto(s) de ${vals.length}`:`Todos os ${vals.length} visíveis`}
+              {sel===null
+                ? `Todos os ${vals.length} visíveis`
+                : sel.size===0
+                  ? `Nenhum visível — filtro bloqueando tudo`
+                  : `${sel.size} de ${vals.length} visível(is)`}
             </div>
           </div>
         )}
@@ -3672,16 +3684,22 @@ function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
       {/* Chips de filtros ativos */}
       {temFiltroAtivo&&(
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
-          {Object.entries(colFiltros).map(([col,sel])=>sel.size>0&&(
-            <span key={col} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,
-              background:"#fff5f5",color:C.vermelho,border:`1px solid #fecaca`,
-              borderRadius:20,padding:"2px 10px",fontWeight:600}}>
-              ✕ sem: {[...sel].join(", ")}
-              <button onClick={()=>selecionarTodos(col)}
-                style={{background:"none",border:"none",cursor:"pointer",color:C.vermelho,
-                  fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
-            </span>
-          ))}
+          {Object.entries(colFiltros).map(([col,sel])=>{
+            if(sel===null) return null; // sem filtro
+            const vals = valoresCol[col]||[];
+            const ocultos = vals.filter(v=>!sel.has(v));
+            if(ocultos.length===0 && sel.size>0) return null; // todos marcados
+            return(
+              <span key={col} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,
+                background:"#fff5f5",color:C.vermelho,border:`1px solid #fecaca`,
+                borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+                {ocultos.length===vals.length?"⊘ nenhum":"✕ ocult:"} {ocultos.length===vals.length?col:ocultos.join(", ")}
+                <button onClick={()=>selecionarTodos(col)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:C.vermelho,
+                    fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+              </span>
+            );
+          })}
           {busca&&(
             <span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,
               background:"#eff6ff",color:C.azulMedio,border:`1px solid ${C.azulMedio}40`,
