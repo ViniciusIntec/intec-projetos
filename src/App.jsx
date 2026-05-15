@@ -426,6 +426,24 @@ const labelExpediente = (expediente) => {
 const salvar     = (k,v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch{} };
 const carregar   = (k,d) => { try { const s=localStorage.getItem(k); return s?JSON.parse(s):d; } catch { return d; } };
 
+// Normaliza qualquer formato legado de expediente para {turno1, turno2, modo}
+// Garante que verificarForaExpediente sempre receba dados completos
+const normalizarExpediente = (exp) => {
+  if (!exp) return { turno1:{inicio:'09:00',fim:'12:00'}, turno2:{ativo:true,inicio:'14:00',fim:'18:00'}, modo:'E' };
+  if (exp.segunda !== undefined) return exp; // formato por dia da semana — OK
+  if (exp.turno1) return exp;                // já tem turno1 — OK
+  // Formato legado {inicio, fim} — converter
+  if (exp.inicio && exp.fim) {
+    const ini = exp.inicio, fim = exp.fim;
+    const totalH = (horaMin(fim) - horaMin(ini)) / 60;
+    if (totalH > 6) {
+      return { turno1:{inicio:ini,fim:'12:00'}, turno2:{ativo:true,inicio:'14:00',fim:fim}, modo:'E' };
+    }
+    return { turno1:{inicio:ini,fim:fim}, turno2:{ativo:false,inicio:'14:00',fim:'18:00'}, modo:'E' };
+  }
+  return { turno1:{inicio:'09:00',fim:'12:00'}, turno2:{ativo:true,inicio:'14:00',fim:'18:00'}, modo:'E' };
+};
+
 function parsePastaDrive(nome, driveUrl="") {
   const m = nome.match(/^(\d{2})\.([A-Z]{2})\.(\d{4})\s*[-–]\s*(.+)$/);
   if (!m) return null;
@@ -5092,7 +5110,11 @@ export default function App(){
         const lu = localStorage.getItem("intec_usuarios");
         const ls = localStorage.getItem("intec_horas");
         if(lp) { try { setProjetos(JSON.parse(lp)); } catch{} }
-        if(lu) { try { setUsuarios(JSON.parse(lu)); } catch{} }
+        if(lu) { try {
+          const us = JSON.parse(lu);
+          // Normalizar expediente de cada usuário ao carregar do localStorage
+          setUsuarios(us.map(u=>({...u, expediente: normalizarExpediente(u.expediente)})));
+        } catch{} }
         if(ls) { try { setRegistros(JSON.parse(ls)); } catch{} }
       } finally {
         setCarregando(false);
