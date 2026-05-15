@@ -334,7 +334,6 @@ const labelModoExpediente = (expediente) => {
 // Retorna hora de fim do expediente do dia atual
 const fimExpediente = (expediente) => {
   if (!expediente) return "18:00";
-  // Formato novo por dia da semana
   if (expediente.segunda !== undefined) {
     const dow = new Date().getDay();
     const nomeDia = DIAS_SEMANA[dow];
@@ -344,11 +343,71 @@ const fimExpediente = (expediente) => {
     const f2 = diaExp.turno2?.ativo ? (diaExp.turno2?.fim || "18:00") : "00:00";
     return diaExp.turno2?.ativo && f2 > f1 ? f2 : f1;
   }
-  // Legado
   const f1 = expediente.turno1?.fim || expediente.fim || "18:00";
   const f2 = expediente.turno2?.ativo ? (expediente.turno2?.fim || "18:00") : "00:00";
   if (expediente.turno2?.ativo) return f2 > f1 ? f2 : f1;
   return f1;
+};
+
+// Verifica se uma hora está fora do expediente e retorna o motivo
+// Retorna: null (dentro) | {motivo, tipo: 'antes'|'intervalo'|'depois'|'folga'}
+const verificarForaExpediente = (hora, expediente) => {
+  if (!hora || !expediente) return null;
+  const hm = horaMin(hora);
+
+  // Formato por dia da semana
+  let t1inicio, t1fim, t2ativo, t2inicio, t2fim, modo, diaAtivo;
+  if (expediente.segunda !== undefined) {
+    const dow = new Date().getDay();
+    const nomeDia = DIAS_SEMANA[dow];
+    const diaExp = expediente[nomeDia];
+    diaAtivo = diaExp?.ativo;
+    if (!diaAtivo) return { motivo: `Hoje (${nomeDia}) é folga`, tipo: 'folga' };
+    t1inicio = diaExp.turno1?.inicio;
+    t1fim    = diaExp.turno1?.fim;
+    t2ativo  = diaExp.turno2?.ativo;
+    t2inicio = diaExp.turno2?.inicio;
+    t2fim    = diaExp.turno2?.fim;
+    modo     = diaExp.modo || 'E';
+  } else {
+    t1inicio = expediente.turno1?.inicio || expediente.inicio;
+    t1fim    = expediente.turno1?.fim    || expediente.fim;
+    t2ativo  = expediente.turno2?.ativo;
+    t2inicio = expediente.turno2?.inicio;
+    t2fim    = expediente.turno2?.fim;
+    modo     = expediente.modo || 'E';
+  }
+  if (!t1inicio || !t1fim) return null;
+
+  const ini1 = horaMin(t1inicio), fim1 = horaMin(t1fim);
+
+  // Antes do início do turno 1
+  if (hm < ini1) return { motivo: `Antes do expediente (começa às ${t1inicio})`, tipo: 'antes' };
+
+  // Modo OU: basta estar em um dos turnos
+  if (t2ativo && t2inicio && t2fim && modo === 'OU') {
+    const ini2 = horaMin(t2inicio), fim2 = horaMin(t2fim);
+    const dentroT1 = hm >= ini1 && hm < fim1;
+    const dentroT2 = hm >= ini2 && hm < fim2;
+    if (!dentroT1 && !dentroT2) {
+      if (hm >= fim1 && hm < ini2) return { motivo: `Intervalo (${t1fim}–${t2inicio})`, tipo: 'intervalo' };
+      if (hm >= fim2) return { motivo: `Após o expediente (encerra às ${t2fim})`, tipo: 'depois' };
+    }
+    return null;
+  }
+
+  // Modo E ou turno único
+  if (hm >= ini1 && hm < fim1) return null; // dentro do turno 1
+
+  if (t2ativo && t2inicio && t2fim) {
+    const ini2 = horaMin(t2inicio), fim2 = horaMin(t2fim);
+    if (hm >= fim1 && hm < ini2) return { motivo: `Intervalo de almoço (${t1fim}–${t2inicio})`, tipo: 'intervalo' };
+    if (hm >= ini2 && hm < fim2) return null; // dentro do turno 2
+    if (hm >= fim2) return { motivo: `Após o expediente (encerra às ${t2fim})`, tipo: 'depois' };
+  } else {
+    if (hm >= fim1) return { motivo: `Após o expediente (encerra às ${t1fim})`, tipo: 'depois' };
+  }
+  return null;
 };
 
 // Formata expediente para exibição
@@ -629,12 +688,16 @@ function ModalHoras({tipo,projetos,usuarioAtual,sessaoAtiva,onIniciar,onEncerrar
     <Inp label="Hora de início" type="time" value={hi} onChange={setHi}/>
     {/* Aviso se estiver fora do expediente */}
     {(()=>{
-      const fim = fimExpediente(usuarioAtual?.expediente);
-      if(fim && hi >= fim) return(
-        <div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e",display:"flex",gap:8,alignItems:"center"}}>
-          <span style={{fontSize:16}}>⏰</span>
+      const fora = verificarForaExpediente(hi, usuarioAtual?.expediente);
+      if(!fora) return null;
+      const icones = { antes:'🌅', intervalo:'🍽', depois:'🌙', folga:'🏖' };
+      const cores  = { antes:'#dbeafe', intervalo:'#fef3c7', depois:'#fef3c7', folga:'#fce7f3' };
+      const textos = { antes:'#1e40af', intervalo:'#92400e', depois:'#92400e', folga:'#9d174d' };
+      return(
+        <div style={{background:cores[fora.tipo],border:`1px solid ${textos[fora.tipo]}40`,borderRadius:8,padding:"10px 14px",fontSize:12,color:textos[fora.tipo],display:"flex",gap:8,alignItems:"flex-start"}}>
+          <span style={{fontSize:16,flexShrink:0}}>{icones[fora.tipo]}</span>
           <div>
-            <strong>Fora do expediente</strong> — esta sessão será registrada como <strong>hora extra</strong> e não será encerrada automaticamente.
+            <strong>{fora.motivo}</strong> — esta sessão será registrada como <strong>hora extra</strong> e não será encerrada automaticamente.
           </div>
         </div>
       );
@@ -5216,9 +5279,10 @@ export default function App(){
       const aberta = regsAtuais.find(r => r.usuarioId===user.id && !r.horaFim);
       if(!aberta) return;
 
-      // NÃO encerrar se a sessão começou DEPOIS do fim do expediente (é hora extra)
-      // Também não encerrar se já foi explicitamente marcada como hora extra
-      if(aberta.horaInicio >= fim || aberta.horaExtra) return;
+      // NÃO encerrar se a sessão foi iniciada fora do expediente (hora extra)
+      if(aberta.horaExtra) return;
+      // NÃO encerrar se a sessão começou depois do fim do expediente
+      if(aberta.horaInicio >= fim) return;
 
       const [fh,fm] = fim.split(":").map(Number);
       const [ah,am] = agora.split(":").map(Number);
@@ -5270,8 +5334,9 @@ export default function App(){
     const dataHoje = new Date().toISOString().slice(0,10);
     const uExp = usuarios.find(u2=>u2.id===user.id)?.expediente;
     const fim  = fimExpediente(uExp);
-    // Sessão iniciada após o fim do expediente = hora extra automaticamente
-    const eHoraExtra = fim && hi >= fim;
+    // Sessão iniciada fora do expediente (antes, intervalo, depois, folga) = hora extra
+    const foraExp = verificarForaExpediente(hi, uExp);
+    const eHoraExtra = !!foraExp;
     const nova = {
       id: Date.now().toString(),
       usuarioId:      user.id,
