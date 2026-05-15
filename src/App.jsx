@@ -283,6 +283,41 @@ const expedientePadrao = () => ({
   domingo: { ativo:false, turno1:{inicio:"09:00",fim:"12:00"}, turno2:{ativo:false,inicio:"14:00",fim:"18:00"} },
 });
 
+// Converte qualquer formato de expediente para o formato por dia da semana
+// Garante que o editor sempre trabalhe com {segunda:{...}, terca:{...}...}
+const expedienteParaDiaSemana = (exp) => {
+  if (!exp) return expedientePadrao();
+  // Já está no formato por dia da semana
+  if (exp.segunda !== undefined) return exp;
+  // Formato legado {turno1, turno2, modo} ou {inicio, fim}
+  // Aplicar o mesmo horário para todos os dias úteis
+  let t1inicio = "09:00", t1fim = "12:00", t2ativo = true, t2inicio = "14:00", t2fim = "18:00", modo = "E";
+  if (exp.turno1) {
+    t1inicio = exp.turno1.inicio || "09:00";
+    t1fim    = exp.turno1.fim    || "12:00";
+    t2ativo  = exp.turno2?.ativo !== false;
+    t2inicio = exp.turno2?.inicio || "14:00";
+    t2fim    = exp.turno2?.fim    || "18:00";
+    modo     = exp.modo || "E";
+  } else if (exp.inicio && exp.fim) {
+    // Formato mais legado ainda — inferir
+    t1inicio = exp.inicio;
+    const totalH = (horaMin(exp.fim) - horaMin(exp.inicio)) / 60;
+    if (totalH > 6) {
+      t1fim = "12:00"; t2ativo = true; t2inicio = "14:00"; t2fim = exp.fim;
+    } else {
+      t1fim = exp.fim; t2ativo = false;
+    }
+  }
+  const diaUtil  = { ativo:true,  turno1:{inicio:t1inicio,fim:t1fim}, turno2:{ativo:t2ativo, inicio:t2inicio,fim:t2fim}, modo };
+  const diaFolga = { ativo:false, turno1:{inicio:t1inicio,fim:t1fim}, turno2:{ativo:false,   inicio:t2inicio,fim:t2fim}, modo };
+  return {
+    segunda: {...diaUtil},  terca: {...diaUtil},  quarta: {...diaUtil},
+    quinta:  {...diaUtil},  sexta: {...diaUtil},
+    sabado:  {...diaFolga}, domingo: {...diaFolga},
+  };
+};
+
 // Verifica se uma hora está dentro do expediente do colaborador
 // Retorna { eHoraExtra: bool, minutosExtras: number }
 const verificarHoraExtra = (horaInicio, horaFim, expediente, dataISO) => {
@@ -2589,7 +2624,7 @@ function Configuracoes({usuarios,onSalvarUsuarios,usuarioAtual}){
                   {(u.especialidades||[]).length>0&&<div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>{(u.especialidades||[]).map(e=><span key={e} style={{background:C.azulEscuro,color:C.ciano,padding:"1px 6px",borderRadius:3,fontSize:9,fontWeight:800}}>{e}</span>)}</div>}
               </div>
               <div style={{display:"flex",gap:8}}>
-                <Btn onClick={()=>{setForm({...u});setEditId(u.id);setShowForm(true);}} variant="ghost" small>✏</Btn>
+                <Btn onClick={()=>{setForm({...u, expediente: expedienteParaDiaSemana(u.expediente)});setEditId(u.id);setShowForm(true);}} variant="ghost" small>✏</Btn>
                 {u.id!==usuarioAtual.id&&<Btn onClick={()=>setLista(l=>l.map(x=>x.id===u.id?{...x,ativo:!x.ativo}:x))} variant={u.ativo?"danger":"verde"} small>{u.ativo?"Desativar":"Ativar"}</Btn>}
               </div>
             </div>
@@ -5097,8 +5132,10 @@ export default function App(){
           if(!current) return current;
           const atualizado = listaUsuarios.find(x=>x.id===current.id);
           if(atualizado) {
-            localStorage.setItem("intec_user_logado", JSON.stringify(atualizado));
-            return atualizado;
+            // Garantir formato correto de expediente
+            const u = {...atualizado, expediente: expedienteParaDiaSemana(atualizado.expediente)};
+            localStorage.setItem("intec_user_logado", JSON.stringify(u));
+            return u;
           }
           return current;
         });
@@ -5543,10 +5580,11 @@ export default function App(){
   );
 
   const fazerLogin = (u) => {
-    const uAtualizado = usuarios.find(x=>x.id===u.id) || u;
+    const uBase = usuarios.find(x=>x.id===u.id) || u;
+    // Garantir que o expediente está no formato por dia da semana
+    const uAtualizado = {...uBase, expediente: expedienteParaDiaSemana(uBase.expediente)};
     setUser(uAtualizado);
     localStorage.setItem("intec_user_logado", JSON.stringify(uAtualizado));
-    // Pedir permissão de notificação ao logar
     pedirPermissaoNotificacao();
     setTimeout(()=>setModalH("checkin"),600);
   };
