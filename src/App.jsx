@@ -3483,51 +3483,223 @@ function TabelaProjetos({projetos,onAbrirProjeto}){
 }
 
 function ListaProjetos({projetos,onAbrirProjeto,onNovoProjeto,usuarios=[]}){
-  const [busca,setBusca]=useState("");const [fStatus,setFS]=useState("todos");const [fTipo,setFT]=useState("todos");const [fAno,setFA]=useState("todos");const [fResp,setFR]=useState("todos");const [view,setView]=useState("grid");
-  const anos=[...new Set(projetos.map(p=>p.ano))].sort((a,b)=>b-a);
-  const resps=useMemo(()=>usuarios.filter(u=>u.ativo).map(u=>u.nome).sort(),[usuarios]);
-  const filtrados=useMemo(()=>{const v=new Set();const u=projetos.filter(p=>{const c=p.id?.trim();if(!c||v.has(c))return false;v.add(c);return true;});return u.filter(p=>{const s=statusN(p.status);if(fStatus!=="todos"&&s!==fStatus)return false;if(fTipo!=="todos"&&p.tipo!==fTipo)return false;if(fAno!=="todos"&&Number(p.ano)!==Number(fAno))return false;if(fResp!=="todos"&&p.responsavel!==fResp&&p.coresponsavel!==fResp)return false;if(busca){const b=busca.toLowerCase();return(p.cliente||"").toLowerCase().includes(b)||(p.codigo||"").toLowerCase().includes(b)||(p.responsavel||"").toLowerCase().includes(b);}return true;});},[projetos,busca,fStatus,fTipo,fAno,fResp]);
-  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>
-    <Card style={{padding:16}}>
-      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="🔍 Buscar..." style={{flex:1,minWidth:200,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 14px",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
-        <select value={fResp} onChange={e=>setFR(e.target.value)} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
-            <option value="todos">👤 Todos os colaboradores</option>
-            {usuarios.filter(u=>u.ativo).map(u=><option key={u.id} value={u.nome}>{u.nome} ({u.perfil==="gestor"?"🔑 Gestor":u.perfil==="admin"?"👑 Admin":"👤"})</option>)}
-          </select>
-        <select value={fStatus} onChange={e=>setFS(e.target.value)} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}><option value="todos">Todos os status</option>{Object.keys(STATUS_CONFIG).map(s=><option key={s} value={s}>{s}</option>)}</select>
-        <select value={fTipo} onChange={e=>setFT(e.target.value)} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}><option value="todos">Todos os tipos</option>{Object.entries(TIPOS).map(([k,v])=><option key={k} value={k}>{k} – {v}</option>)}</select>
-        <select value={fAno} onChange={e=>setFA(e.target.value)} style={{border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,padding:"8px 12px",fontSize:13,fontFamily:"inherit",cursor:"pointer"}}><option value="todos">Todos os anos</option>{anos.map(a=><option key={a} value={a}>{a}</option>)}</select>
-        <div style={{display:"flex",gap:4}}>{["grid","list"].map(v=><button key={v} onClick={()=>setView(v)} style={{background:view===v?C.azulMedio:"transparent",color:view===v?C.branco:C.cinzaClaro,border:`1.5px solid ${view===v?C.azulMedio:C.cinzaCard}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:16}}>{v==="grid"?"⊞":"☰"}</button>)}</div>
-        <Btn onClick={onNovoProjeto}>+ Novo</Btn>
-      </div>
-      {/* Chips de filtros ativos + contador */}
-      <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <span style={{fontSize:12,color:C.cinzaClaro}}>{filtrados.length} projeto(s)</span>
-        {fResp!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#e8f4fd",color:C.azulMedio,border:`1px solid ${C.azulMedio}40`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
-          👤 {fResp}<button onClick={()=>setFR("todos")} style={{background:"none",border:"none",cursor:"pointer",color:C.azulMedio,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
-        </span>}
-        {fStatus!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:(STATUS_CONFIG[fStatus]||{}).bg||"#f1f5f9",color:(STATUS_CONFIG[fStatus]||{}).cor||C.cinzaClaro,border:`1px solid ${(STATUS_CONFIG[fStatus]||{}).cor||C.cinzaCard}40`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
-          {(STATUS_CONFIG[fStatus]||{}).icone} {fStatus}<button onClick={()=>setFS("todos")} style={{background:"none",border:"none",cursor:"pointer",color:"inherit",fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
-        </span>}
-        {fTipo!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#f1f5f9",color:C.azulEscuro,border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
-          {fTipo} – {TIPOS[fTipo]}<button onClick={()=>setFT("todos")} style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
-        </span>}
-        {fAno!=="todos"&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#f1f5f9",color:C.azulEscuro,border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
-          📅 {fAno}<button onClick={()=>setFA("todos")} style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
-        </span>}
-        {busca&&<span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,background:"#f1f5f9",color:C.azulEscuro,border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",fontWeight:600}}>
-          🔍 "{busca}"<button onClick={()=>setBusca("")} style={{background:"none",border:"none",cursor:"pointer",color:C.cinzaClaro,fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
-        </span>}
-        {(fResp!=="todos"||fStatus!=="todos"||fTipo!=="todos"||fAno!=="todos"||busca)&&(
-          <button onClick={()=>{setFR("todos");setFS("todos");setFT("todos");setFA("todos");setBusca("");}}
-            style={{fontSize:11,background:"none",border:`1px solid ${C.cinzaCard}`,borderRadius:20,padding:"2px 10px",cursor:"pointer",color:C.cinzaClaro,fontFamily:"inherit"}}>
-            Limpar tudo
-          </button>
+  const [busca,   setBusca] = useState("");
+  const [view,    setView]  = useState("grid");
+  const [abrirFiltro, setAbrirFiltro] = useState(null); // qual dropdown está aberto
+  // colFiltros: {col: Set} — Set vazio = sem filtro (mostrar tudo)
+  const [colFiltros, setColF] = useState({tipo:new Set(),status:new Set(),responsavel:new Set(),ano:new Set()});
+
+  // Fechar dropdown ao clicar fora
+  useEffect(()=>{
+    if(!abrirFiltro) return;
+    const fn = e => { setAbrirFiltro(null); };
+    setTimeout(()=>document.addEventListener("click",fn),0);
+    return ()=>document.removeEventListener("click",fn);
+  },[abrirFiltro]);
+
+  // Valores únicos por coluna (dos projetos originais, sem deduplicação)
+  const valoresCol = useMemo(()=>{
+    const uniq = projetos.filter((p,i,a)=>a.findIndex(x=>x.id===p.id)===i);
+    return {
+      tipo:        [...new Set(uniq.map(p=>p.tipo).filter(Boolean))].sort(),
+      status:      [...new Set(uniq.map(p=>statusN(p.status)))].sort(),
+      responsavel: [...new Set(uniq.flatMap(p=>[p.responsavel,p.coresponsavel,p.coresponsavel2,p.coresponsavel3].filter(Boolean)))].sort(),
+      ano:         [...new Set(uniq.map(p=>String(p.ano)).filter(Boolean))].sort((a,b)=>b-a),
+    };
+  },[projetos]);
+
+  const ativo = col => colFiltros[col]?.size > 0;
+
+  const toggleVal = (col, val) => {
+    setColF(prev=>{
+      const s = new Set(prev[col]||[]);
+      s.has(val) ? s.delete(val) : s.add(val);
+      return {...prev,[col]:s};
+    });
+  };
+
+  const selecionarTodos = col => setColF(prev=>({...prev,[col]:new Set()}));
+  const desmarcarTodos  = col => setColF(prev=>({...prev,[col]:new Set(valoresCol[col])}));
+  const limparTudo = () => setColF({tipo:new Set(),status:new Set(),responsavel:new Set(),ano:new Set()});
+
+  const temFiltroAtivo = Object.values(colFiltros).some(s=>s.size>0) || !!busca;
+
+  // Aplicar filtros
+  const filtrados = useMemo(()=>{
+    const vistos = new Set();
+    return projetos.filter(p=>{
+      const id = p.id?.trim();
+      if(!id||vistos.has(id)) return false;
+      vistos.add(id);
+      if(ativo("tipo")   && !colFiltros.tipo.has(p.tipo))                                             return false;
+      if(ativo("status") && !colFiltros.status.has(statusN(p.status)))                               return false;
+      if(ativo("ano")    && !colFiltros.ano.has(String(p.ano)))                                      return false;
+      if(ativo("responsavel")){
+        const eq=[p.responsavel,p.coresponsavel,p.coresponsavel2,p.coresponsavel3].filter(Boolean);
+        if(!eq.some(n=>colFiltros.responsavel.has(n))) return false;
+      }
+      if(busca){
+        const b=busca.toLowerCase();
+        return (p.cliente||"").toLowerCase().includes(b)||(p.codigo||"").toLowerCase().includes(b)||(p.responsavel||"").toLowerCase().includes(b);
+      }
+      return true;
+    });
+  },[projetos,colFiltros,busca]);
+
+  // Componente dropdown checklist reutilizável
+  const FiltroBtn = ({col, label, icone}) => {
+    const vals = valoresCol[col]||[];
+    const sel  = colFiltros[col]||new Set();
+    const temF = sel.size > 0;
+    const aberto = abrirFiltro === col;
+    // Quantos estão desmarcados (excluídos)
+    const excluidos = temF ? vals.length - (vals.length - sel.size) : 0;
+    return (
+      <div style={{position:"relative"}}>
+        <button onClick={e=>{e.stopPropagation();setAbrirFiltro(aberto?null:col);}}
+          style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",
+            border:`1.5px solid ${temF?C.azulMedio:C.cinzaCard}`,borderRadius:8,
+            background:temF?"#eff6ff":"white",color:temF?C.azulMedio:C.cinzaClaro,
+            cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:temF?700:400,
+            whiteSpace:"nowrap"}}>
+          {icone} {label}
+          {temF&&<span style={{background:C.azulMedio,color:"white",borderRadius:10,
+            fontSize:10,fontWeight:800,padding:"1px 5px",marginLeft:2}}>
+            {vals.length - sel.size}/{vals.length}
+          </span>}
+          <span style={{fontSize:10,opacity:0.5}}>{aberto?"▲":"▼"}</span>
+        </button>
+        {aberto&&(
+          <div onClick={e=>e.stopPropagation()}
+            style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:1000,
+              background:"white",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",
+              border:`1px solid ${C.cinzaCard}`,minWidth:200,maxWidth:260,padding:8}}>
+            {/* Cabeçalho */}
+            <div style={{display:"flex",gap:6,marginBottom:8,paddingBottom:8,borderBottom:`1px solid ${C.cinzaCard}`}}>
+              <button onClick={()=>selecionarTodos(col)}
+                style={{flex:1,fontSize:11,background:C.cinzaFundo,border:`1px solid ${C.cinzaCard}`,
+                  borderRadius:6,padding:"4px 6px",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+                ✓ Todos
+              </button>
+              <button onClick={()=>desmarcarTodos(col)}
+                style={{flex:1,fontSize:11,background:"#fff5f5",border:`1px solid #fecaca`,
+                  borderRadius:6,padding:"4px 6px",cursor:"pointer",fontFamily:"inherit",fontWeight:600,color:C.vermelho}}>
+                ✕ Nenhum
+              </button>
+            </div>
+            {/* Lista de valores */}
+            <div style={{maxHeight:220,overflowY:"auto",display:"flex",flexDirection:"column",gap:1}}>
+              {vals.map(v=>{
+                const marcado = !sel.has(v); // sem filtro = todos marcados; com filtro, marcado = NÃO está no set de excluídos
+                // Lógica: sel guarda os EXCLUÍDOS — desmarcado = excluído
+                // Revertendo: sel vazio = todos visíveis; sel com valores = esses valores estão OCULTOS
+                const visivel = sel.size===0 || !sel.has(v);
+                return(
+                  <label key={v} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",
+                    borderRadius:6,cursor:"pointer",background:visivel?"white":"#fef2f2",
+                    transition:"background 0.1s"}}>
+                    <input type="checkbox" checked={visivel}
+                      onChange={()=>toggleVal(col,v)}
+                      style={{accentColor:C.azulMedio,width:14,height:14,cursor:"pointer"}}/>
+                    <span style={{fontSize:12,color:visivel?C.cinzaEscuro:C.cinzaClaro,
+                      fontWeight:visivel?500:400,flex:1,textDecoration:visivel?"none":"line-through"}}>
+                      {col==="status"
+                        ? <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                            <span style={{width:8,height:8,borderRadius:"50%",
+                              background:(STATUS_CONFIG[v]||{}).cor||C.cinzaClaro,display:"inline-block"}}/>
+                            {v}
+                          </span>
+                        : v}
+                    </span>
+                    <span style={{fontSize:10,color:C.cinzaClaro,marginLeft:"auto"}}>
+                      {projetos.filter(p=>
+                        col==="tipo"?p.tipo===v:
+                        col==="status"?statusN(p.status)===v:
+                        col==="ano"?String(p.ano)===v:
+                        [p.responsavel,p.coresponsavel,p.coresponsavel2,p.coresponsavel3].includes(v)
+                      ).length}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{marginTop:6,paddingTop:6,borderTop:`1px solid ${C.cinzaCard}`,
+              fontSize:10,color:C.cinzaClaro,textAlign:"center"}}>
+              {sel.size>0?`${sel.size} oculto(s) de ${vals.length}`:`Todos os ${vals.length} visíveis`}
+            </div>
+          </div>
         )}
       </div>
+    );
+  };
+
+  return(<div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <Card style={{padding:16}}>
+      {/* Linha 1: busca + toggle view + novo */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="🔍 Buscar por nome, código ou responsável..."
+          style={{flex:1,minWidth:200,border:`1.5px solid ${C.cinzaCard}`,borderRadius:8,
+            padding:"8px 14px",fontSize:13,fontFamily:"inherit",outline:"none"}}/>
+        <div style={{display:"flex",gap:4}}>
+          {["grid","list"].map(v=>(
+            <button key={v} onClick={()=>setView(v)}
+              style={{background:view===v?C.azulMedio:"transparent",color:view===v?C.branco:C.cinzaClaro,
+                border:`1.5px solid ${view===v?C.azulMedio:C.cinzaCard}`,borderRadius:6,
+                padding:"6px 10px",cursor:"pointer",fontSize:16}}>
+              {v==="grid"?"⊞":"☰"}
+            </button>
+          ))}
+        </div>
+        <Btn onClick={onNovoProjeto}>+ Novo</Btn>
+      </div>
+      {/* Linha 2: filtros checklist estilo Excel */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginTop:10}}>
+        <FiltroBtn col="tipo"        label="Tipo"          icone="🏷"/>
+        <FiltroBtn col="status"      label="Status"        icone="📊"/>
+        <FiltroBtn col="responsavel" label="Responsável"   icone="👤"/>
+        <FiltroBtn col="ano"         label="Ano"           icone="📅"/>
+        {temFiltroAtivo&&(
+          <button onClick={()=>{limparTudo();setBusca("");}}
+            style={{fontSize:12,background:"#fef2f2",border:`1px solid #fecaca`,color:C.vermelho,
+              borderRadius:8,padding:"7px 12px",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+            ✕ Limpar filtros
+          </button>
+        )}
+        <span style={{fontSize:12,color:C.cinzaClaro,marginLeft:"auto",fontWeight:600}}>
+          {filtrados.length} de {[...new Set(projetos.map(p=>p.id))].length} projeto(s)
+        </span>
+      </div>
+      {/* Chips de filtros ativos */}
+      {temFiltroAtivo&&(
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8,paddingTop:8,borderTop:`1px solid ${C.cinzaCard}`}}>
+          {Object.entries(colFiltros).map(([col,sel])=>sel.size>0&&(
+            <span key={col} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,
+              background:"#fff5f5",color:C.vermelho,border:`1px solid #fecaca`,
+              borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+              ✕ sem: {[...sel].join(", ")}
+              <button onClick={()=>selecionarTodos(col)}
+                style={{background:"none",border:"none",cursor:"pointer",color:C.vermelho,
+                  fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+            </span>
+          ))}
+          {busca&&(
+            <span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,
+              background:"#eff6ff",color:C.azulMedio,border:`1px solid ${C.azulMedio}40`,
+              borderRadius:20,padding:"2px 10px",fontWeight:600}}>
+              🔍 "{busca}"
+              <button onClick={()=>setBusca("")}
+                style={{background:"none",border:"none",cursor:"pointer",color:C.azulMedio,
+                  fontSize:13,padding:"0 0 0 4px",lineHeight:1}}>×</button>
+            </span>
+          )}
+        </div>
+      )}
     </Card>
-    {view==="grid"?<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>{filtrados.map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}</div>:<TabelaProjetos projetos={filtrados} onAbrirProjeto={onAbrirProjeto}/>}
+    {view==="grid"
+      ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+          {filtrados.map(p=><CardProjeto key={p.id} p={p} onClick={()=>onAbrirProjeto(p)}/>)}
+        </div>
+      : <TabelaProjetos projetos={filtrados} onAbrirProjeto={onAbrirProjeto}/>}
   </div>);
 }
 
