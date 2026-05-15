@@ -563,16 +563,6 @@ export const chat = {
     return data || [];
   },
 
-  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[]) {
-    const { data, error } = await supabase
-      .from('chat_mensagens')
-      .insert({ canal_id: canalId, autor_id: autorId, autor_nome: autorNome,
-                autor_cor: autorCor, conteudo, mencoes })
-      .select().single();
-    if (error) throw error;
-    return data;
-  },
-
   async excluirMensagem(id) {
     const { error } = await supabase.from('chat_mensagens').delete().eq('id', id);
     if (error) throw error;
@@ -586,26 +576,114 @@ export const chat = {
     if (error) throw error;
   },
 
-  // Realtime: escuta mensagens novas em um canal
+  desassinarCanal(canal) {
+    try { supabase.removeChannel(canal); } catch(e) {}
+  },
+
+  // Realtime: escuta mensagens via Broadcast (privado por canal)
   assinarCanal(canalId, onMensagem) {
-    // Nome único por chamada — evita conflito com canais já subscritos
-    const nomeCanal = `chat-${canalId}-${Date.now()}`;
-    const canal = supabase.channel(nomeCanal);
-    canal.on('postgres_changes',
+    const nomeCanal = `chat-msgs-${canalId}`;
+    const sub = supabase.channel(nomeCanal);
+    sub.on('broadcast', { event: 'nova_msg' }, ({ payload }) => {
+      if(payload) onMensagem(payload);
+    });
+    sub.on('postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'chat_mensagens', filter: `canal_id=eq.${canalId}` },
       payload => { if(payload.new) onMensagem(payload.new); }
     );
-    canal.subscribe((status) => {
-      if(status === 'SUBSCRIBED') {
-        console.log(`Chat realtime ativo: ${nomeCanal}`);
-      } else if(status === 'CHANNEL_ERROR') {
-        console.error(`Chat realtime erro: ${nomeCanal}`, status);
-      }
+    sub.subscribe((status) => {
+      if(status === 'SUBSCRIBED') console.log(`Chat realtime ativo: ${nomeCanal}`);
     });
-    return canal;
+    return sub;
   },
 
-  desassinarCanal(canal) {
-    try { supabase.removeChannel(canal); } catch(e) {}
+  // Envia mensagem e faz broadcast para todos no canal
+  async enviarMensagem(canalId, autorId, autorNome, autorCor, conteudo, mencoes=[], arquivo=null) {
+    const { data, error } = await supabase
+      .from('chat_mensagens')
+      .insert({ canal_id: canalId, autor_id: autorId, autor_nome: autorNome,
+                autor_cor: autorCor, conteudo, mencoes,
+                arquivo_url: arquivo?.url||null,
+                arquivo_nome: arquivo?.nome||null,
+                arquivo_tipo: arquivo?.tipo||null,
+                arquivo_tamanho: arquivo?.tamanho||null })
+      .select().single();
+    if(error) throw error;
+    const ch = supabase.channel(`chat-msgs-${canalId}`);
+    ch.send({ type: 'broadcast', event: 'nova_msg', payload: data }).catch(()=>{});
+    return data;
+  },
+
+  // Upload de arquivo para Supabase Storage
+  async uploadArquivo(arquivo, usuarioId) {
+    const LIMITES = { imagem: 2*1024*1024, documento: 5*1024*1024 };
+    const tipoImagem = arquivo.type.startsWith('image/');
+    const tipoAudio  = arquivo.type.startsWith('audio/');
+    const limite = tipoImagem ? LIMITES.imagem : LIMITES.documento;
+    if(arquivo.size > limite) {
+      const limiteMB = tipoImagem ? '2MB' : '5MB';
+      throw new Error(`Arquivo muito grande. Limite: ${limiteMB} para ${tipoImagem?'imagens':'documentos'}.`);
+    }
+    const ext  = arquivo.name.split('.').pop() || 'bin';
+    const path = `${usuarioId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from('chat-arquivos').upload(path, arquivo, {
+      cacheControl: '3600', upsert: false, contentType: arquivo.type,
+    });
+    if(error) throw error;
+    const { data: { publicUrl } } = supabase.storage.from('chat-arquivos').getPublicUrl(path);
+    return { url: publicUrl, nome: arquivo.name, tipo: tipoAudio?'audio':tipoImagem?'imagem':'documento', tamanho: arquivo.size };
+  },
+
+  // Notifica um usuário de novo DM via Broadcast
+  async notificarNovoDM(paraUserId, canal) {
+    const ch = supabase.channel(`dm-notify-${paraUserId}`);
+    await ch.subscribe();
+    await ch.send({ type: 'broadcast', event: 'novo_dm', payload: canal });
+    supabase.removeChannel(ch);
+  },
+
+  // Escuta quando o usuário é adicionado a um DM
+  assinarMembros(userId, onNovoCanal) {
+    const sub = supabase.channel(`dm-notify-${userId}`);
+    sub.on('broadcast', { event: 'novo_dm' }, ({ payload }) => {
+      console.log('[Chat DM] Novo DM recebido via broadcast:', payload);
+      if(payload) onNovoCanal(payload);
+    });
+    sub.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_membros', filter: `usuario_id=eq.${userId}` },
+      async payload => {
+        console.log('[Chat DM] Novo membro (fallback):', payload.new);
+        if(!payload.new?.canal_id) return;
+        const { data } = await supabase.from('chat_canais').select('*').eq('id', payload.new.canal_id).single();
+        if(data) onNovoCanal(data);
+      }
+    );
+    sub.subscribe((status, err) => {
+      console.log(`[Chat DM] dm-notify-${userId} status: ${status}`, err||'');
+    });
+    return sub;
+  },
+
+  // Escuta criação e exclusão de canais públicos
+  assinarCanaisPublicos(onNovoCanal, onDeletarCanal) {
+    const sub = supabase.channel(`chat-canais-${Date.now()}`);
+    sub.on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_canais' },
+      payload => {
+        console.log('[Chat Realtime] Novo canal:', payload.new);
+        if(payload.new) onNovoCanal(payload.new);
+      }
+    );
+    sub.on('postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'chat_canais' },
+      payload => {
+        console.log('[Chat Realtime] Canal deletado:', payload.old);
+        if(payload.old?.id) onDeletarCanal(payload.old.id);
+      }
+    );
+    sub.subscribe((status, err) => {
+      console.log(`[Chat Realtime] chat_canais status: ${status}`, err||'');
+    });
+    return sub;
   },
 };
