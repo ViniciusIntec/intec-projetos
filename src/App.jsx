@@ -108,12 +108,13 @@ const C = {
 };
 
 const STATUS_CONFIG = {
-  "Novo/Definir": { cor:C.cinzaClaro, bg:"#f8fafc", icone:"○" },
-  "Em andamento": { cor:C.azulClaro,  bg:"#e8f4fd", icone:"▶" },
-  "PAUSADO":      { cor:C.amarelo,    bg:"#fffbeb", icone:"⏸" },
-  "ATRASADO":     { cor:C.vermelho,   bg:"#fef2f2", icone:"⚠" },
-  "CONCLUÍDO":    { cor:C.verde,      bg:"#f0fdf4", icone:"✓" },
-  "CANCELADO":    { cor:"#6b7280",    bg:"#f3f4f6", icone:"✕" },
+  "Novo/Definir":   { cor:C.cinzaClaro, bg:"#f8fafc", icone:"○" },
+  "Em andamento":   { cor:C.azulClaro,  bg:"#e8f4fd", icone:"▶" },
+  "PAUSADO":        { cor:C.amarelo,    bg:"#fffbeb", icone:"⏸" },
+  "PAUSADO PARCIAL":{ cor:"#d97706",    bg:"#fef3c7", icone:"⏸" },
+  "ATRASADO":       { cor:C.vermelho,   bg:"#fef2f2", icone:"⚠" },
+  "CONCLUÍDO":      { cor:C.verde,      bg:"#f0fdf4", icone:"✓" },
+  "CANCELADO":      { cor:"#6b7280",    bg:"#f3f4f6", icone:"✕" },
 };
 // Normaliza variações antigas
 const STATUS_ALIAS = { "Concluído":"CONCLUÍDO", "concluído":"CONCLUÍDO", "Cancelado":"CANCELADO" };
@@ -181,6 +182,17 @@ const calcStatusAuto = (p) => {
   if (atual==="CONCLUÍDO" || atual==="CANCELADO") return atual;
   if (atual==="PAUSADO") return "PAUSADO";
   if ((p.progresso||0) >= 100) return "CONCLUÍDO";
+  // CB: verificar pausas parciais nas disciplinas dos membros
+  if (p.tipo==="CB") {
+    const membros = (p.disciplinas||[]).filter(d=>d.usuarioNome);
+    if (membros.length > 0) {
+      // Todas as disciplinas de todos os membros pausadas = PAUSADO geral
+      const todasDiscs = membros.flatMap(m=>(m.disciplinas||[]).map(dId=>({dId,pausada:(m.discPausadas||{})[dId]})));
+      if (todasDiscs.length > 0 && todasDiscs.every(d=>d.pausada)) return "PAUSADO";
+      // Pelo menos uma disciplina pausada = PAUSADO PARCIAL
+      if (todasDiscs.some(d=>d.pausada)) return "PAUSADO PARCIAL";
+    }
+  }
   if (p.dataEntregaPrevista) {
     const dias = Math.ceil((new Date(p.dataEntregaPrevista) - new Date()) / 86400000);
     if (dias < 0) return "ATRASADO";
@@ -2869,8 +2881,9 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                 disc.forEach(d => {
                   const nome = d.responsavel||"";
                   if(!nome) return;
-                  if(!mapa[nome]) mapa[nome] = {usuarioNome:nome, disciplinas:[], obs:d.obs||""};
+                  if(!mapa[nome]) mapa[nome] = {usuarioNome:nome, disciplinas:[], obs:d.obs||"", discPausadas:{}};
                   if(d.id) mapa[nome].disciplinas.push(d.id);
+                  if(d.id && d.pausada) mapa[nome].discPausadas[d.id] = true;
                 });
                 membros = Object.values(mapa);
               }
@@ -2898,6 +2911,24 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
               };
               const setObs = (mIdx, obs) => {
                 s("disciplinas", membros.map((m,i)=>i!==mIdx?m:{...m,obs}));
+              };
+              // Pausar/retomar uma disciplina específica de um membro
+              const togglePausaDisc = (mIdx, discId) => {
+                const novos = membros.map((m,i)=>{
+                  if(i!==mIdx) return m;
+                  const dp = {...(m.discPausadas||{})};
+                  if(dp[discId]) delete dp[discId]; else dp[discId] = true;
+                  return {...m, discPausadas:dp};
+                });
+                s("disciplinas", novos);
+                // Recalcular status automaticamente
+                if(form.statusAuto){
+                  // Contar disciplinas pausadas de todos os membros
+                  const todasDiscs = novos.flatMap(m=>(m.disciplinas||[]).map(dId=>({dId,pausada:(m.discPausadas||{})[dId]})));
+                  if(todasDiscs.length>0 && todasDiscs.every(d=>d.pausada)) s("status","PAUSADO");
+                  else if(todasDiscs.some(d=>d.pausada)) s("status","PAUSADO PARCIAL");
+                  else s("status","Em andamento");
+                }
               };
 
               return (
@@ -2955,19 +2986,53 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                           <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                             {DISCIPLINAS_CB.map(d=>{
                               const ativo = (m.disciplinas||[]).includes(d.id);
-                              return(
+                              const pausada = ativo && (m.discPausadas||{})[d.id];
+                              if(!ativo) return(
                                 <button key={d.id} onClick={()=>toggleDisc(mIdx,d.id)}
                                   style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
-                                    borderRadius:14,border:`1.5px solid ${ativo?d.cor:C.cinzaCard}`,
-                                    background:ativo?d.cor:"white",color:ativo?"white":C.cinzaClaro,
-                                    cursor:"pointer",fontSize:11,fontWeight:ativo?700:400,
+                                    borderRadius:14,border:`1.5px solid ${C.cinzaCard}`,
+                                    background:"white",color:C.cinzaClaro,
+                                    cursor:"pointer",fontSize:11,
                                     fontFamily:"inherit",transition:"all 0.12s"}}>
                                   {d.icone} {d.id}
-                                  {ativo&&<span style={{fontSize:9}}>✓</span>}
                                 </button>
+                              );
+                              return(
+                                <div key={d.id} style={{display:"flex",alignItems:"center",gap:0,
+                                  borderRadius:14,border:`1.5px solid ${pausada?"#d97706":d.cor}`,
+                                  background:pausada?"#fef3c7":d.cor,overflow:"hidden"}}>
+                                  {/* Clica na disciplina = remove */}
+                                  <button onClick={()=>toggleDisc(mIdx,d.id)}
+                                    title="Remover disciplina"
+                                    style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+                                      background:"transparent",border:"none",
+                                      color:pausada?"#92400e":"white",
+                                      cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+                                    {d.icone} {d.id} ✓
+                                  </button>
+                                  {/* Botão de pausa parcial */}
+                                  <button onClick={()=>togglePausaDisc(mIdx,d.id)}
+                                    title={pausada?"Retomar disciplina":"Pausar esta disciplina"}
+                                    style={{padding:"4px 7px",background:pausada?"#d97706":"rgba(0,0,0,0.2)",
+                                      border:"none",borderLeft:`1px solid rgba(255,255,255,0.3)`,
+                                      color:"white",cursor:"pointer",fontSize:11,lineHeight:1,
+                                      display:"flex",alignItems:"center"}}>
+                                    {pausada?"▶":"⏸"}
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
+                          {/* Aviso de pausas parciais */}
+                          {Object.keys(m.discPausadas||{}).filter(k=>(m.disciplinas||[]).includes(k)).length>0&&(
+                            <div style={{fontSize:11,color:"#92400e",background:"#fef3c7",
+                              padding:"4px 10px",borderRadius:6,border:"1px solid #fde68a"}}>
+                              ⏸ {Object.keys(m.discPausadas||{}).filter(k=>(m.disciplinas||[]).includes(k)).map(k=>{
+                                const d=DISCIPLINAS_CB.find(x=>x.id===k);
+                                return d?`${d.icone} ${d.id}`:k;
+                              }).join(", ")} pausada(s)
+                            </div>
+                          )}
                           <input value={m.obs||""} onChange={e=>setObs(mIdx,e.target.value)}
                             placeholder="Observações sobre a participação..."
                             style={{border:`1px solid ${C.cinzaCard}`,borderRadius:7,padding:"5px 10px",
@@ -3057,8 +3122,9 @@ function ModalProjeto({projeto,onClose,onSave,onExcluir,modo,usuarios=[]}){
                 disciplinasFinais.forEach(d => {
                   const nome = d.responsavel||"";
                   if(!nome) return;
-                  if(!mapa[nome]) mapa[nome] = {usuarioNome:nome, disciplinas:[], obs:d.obs||""};
+                  if(!mapa[nome]) mapa[nome] = {usuarioNome:nome, disciplinas:[], obs:d.obs||"", discPausadas:{}};
                   if(d.id) mapa[nome].disciplinas.push(d.id);
+                  if(d.id && d.pausada) mapa[nome].discPausadas[d.id] = true;
                 });
                 disciplinasFinais = Object.values(mapa);
               }
